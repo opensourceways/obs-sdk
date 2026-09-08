@@ -1,0 +1,22 @@
+{
+  "name": "obs-sdk-node",
+  "version": "0.1.0",
+  "description": "opensourceways 微服务可观测薄封装 SDK (Node)——结构化 JSON 日志 + Prometheus 指标，契约见 ../spec",
+  "license": "Apache-2.0",
+  "main": "index.js",
+  "type": "commonjs",
+  "files": [
+    "index.js",
+    "lib/",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "prom-client": "^15.1.0"
+  }
+}
