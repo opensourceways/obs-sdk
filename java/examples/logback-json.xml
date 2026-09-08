@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  结构化 JSON 日志装配示例（logback + logstash-logback-encoder）。
+
+  输出为单行 JSON；MDC 里 spec 固定字段（service/env/instance/community/request_id/trace_id）
+  由 ObsLogging 写入后在此显式列出，与 spec/log-format.md 对齐。
+  用法：把本文件拷成接入服务的 logback-spring.xml（Spring Boot 用）或 classpath:logback.xml，
+  并依赖 logstash-logback-encoder（provided scope 需要接入服务自行引入）：
+      <dependency>
+        <groupId>net.logstash.logback</groupId>
+        <artifactId>logstash-logback-encoder</artifactId>
+        <version>7.4</version>
+      </dependency>
+-->
+<configuration>
+  <appender name="STDOUT_JSON" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
+      <providers>
+        <timestamp/>
+        <version/>
+        <logLevel/>
+        <loggerName/>
+        <message/>
+        <mdc>
+          <!-- 只输出 obs-sdk 的固定键；日志同时带 request_id/trace_id 供检索串联 -->
+          <key>service</key>
+          <key>env</key>
+          <key>instance</key>
+          <key>community</key>
+          <key>request_id</key>
+          <key>trace_id</key>
+        </mdc>
+      </providers>
+    </encoder>
+    <target>System.out</target>
+  </appender>
+
+  <root level="INFO">
+    <appender-ref ref="STDOUT_JSON"/>
+  </root>
+</configuration>
