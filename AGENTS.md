@@ -9,7 +9,7 @@ opensourceways 微服务的**可观测薄封装 SDK monorepo**：把「结构化
 按各语言官方库做一层装配（中间件 / 通用字段注入 / 命名对齐），**不自研 instrumentation**。
 输出格式由 [spec/](spec/README.md) 契约层统一约束，四个语言实现必须对齐。
 
-需求：[backlog#1938](https://github.com/opensourceways/backlog/issues/1938)
+需求：[backlog#1938](https://github.com/opensourceways/backlog/issues/1938) · 子任务：[backlog#2061](https://github.com/opensourceways/backlog/issues/2061)
 
 ## 铁律（改代码前必读）
 
