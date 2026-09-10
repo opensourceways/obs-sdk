@@ -174,7 +174,8 @@ cd node   && npm install && npm test
 cd java   && mvn test                     # 需 JDK 17 + Maven
 ```
 
-工具链版本对齐 CI（[.github/workflows/ci.yml](.github/workflows/ci.yml)）：Go 取 `go/go.mod` 的版本（1.22）、Python 3.10、Node 20、Java 17。
+工具链版本对齐 CI（[.github/workflows/ci.yml](.github/workflows/ci.yml)）：**Go 的版本以 `go/go.mod` 的 `go` 指令为准**
+（CI 用 `go-version-file` 读它，不要在文档里硬编码具体版本）、Python 3.10、Node 20、Java 17。
 本机没有系统级 JDK/Maven 时，可把 `JAVA_HOME` / `PATH` 指向自装工具链；Java 的最终验证以 CI 为准。
 
 ## 改动约定
