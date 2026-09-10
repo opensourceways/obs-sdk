@@ -1,9 +1,10 @@
 """请求级通用字段的 context 读写（Python 版 sdkctx）。
 
 用 contextvars 实现（线程 / async 各自隔离，与 spec/common-fields.md 一致）：
-  - community 覆盖值 / request_id / trace_id 存于当前 Context；
+  - community 覆盖值 / request_id / trace_id / span_id 存于当前 Context；
   - 框架适配器在入口把可信解析出的字段 bind 进 Context，退出时 reset；
-  - log / metrics 读取当前 Context，未绑定则回退部署级默认。
+  - log / metrics 读取当前 Context，未绑定则回退部署级默认；
+  - trace_id / span_id 为二期 trace 预留注入位，首期恒空、有值才输出。
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ class Request:
     community: str | None = None
     request_id: str | None = None
     trace_id: str | None = None
+    span_id: str | None = None
 
 
 _current: contextvars.ContextVar[Request] = contextvars.ContextVar(
@@ -46,9 +48,14 @@ def trace_id() -> str | None:
     return _current.get().trace_id
 
 
+def span_id() -> str | None:
+    """当前 span_id（二期 trace 预留，首期恒为 None）。"""
+    return _current.get().span_id
+
+
 @contextmanager
 def bind(*, community: str | None = None, request_id: str | None = None,
-         trace_id: str | None = None) -> Iterator[None]:
+         trace_id: str | None = None, span_id: str | None = None) -> Iterator[None]:
     """把请求级字段 bind 进当前 Context；退出自动 reset。
 
     用于框架适配器入口 / 业务可信判定点：
@@ -61,6 +68,7 @@ def bind(*, community: str | None = None, request_id: str | None = None,
         community=community if community is not None else prev.community,
         request_id=request_id if request_id is not None else prev.request_id,
         trace_id=trace_id if trace_id is not None else prev.trace_id,
+        span_id=span_id if span_id is not None else prev.span_id,
     )
     token = _current.set(merged)
     try:

@@ -4,7 +4,7 @@ opensourceways 微服务可观测薄封装 SDK 的 Node 实现，契约见 [spec
 
 - **日志**：`lib/log` —— 单行 JSON 写 stream（默认 stdout）
 - **指标**：`lib/metrics` —— prom-client 薄封装（counter/gauge/histogram）
-- **请求上下文**：`lib/context` —— `AsyncLocalStorage` 承载 `community/request_id/trace_id`
+- **请求上下文**：`lib/context` —— `AsyncLocalStorage` 承载 `community/request_id/trace_id/span_id`（后两者为二期 trace 预留位）
 - **中间件**：`lib/middleware` —— Express/通用 HTTP 中间件（注入 request_id + 可信判定点解析 community + 记 `obs_http_server_*`）
 - **community 双层注入**：`service/env/instance` 常驻；`community` 可变 —— 请求上下文覆盖，未覆盖回退部署默认（`OBS_*` 环境变量）
 
@@ -36,7 +36,7 @@ const mw = makeMiddleware({
 // /metrics 暴露：app.get('/metrics', metricsRouteHandler(m));
 ```
 
-请求级覆盖（context 作用域内日志 / 指标自动带覆盖 community 与 request_id/trace_id）：
+请求级覆盖（context 作用域内日志 / 指标自动带覆盖 community 与 request_id/trace_id/span_id）：
 
 ```js
 obs.context.bindRequest({ community: 'mindspore', requestId: 'req-1', traceId: 'trace-x' }, () => {

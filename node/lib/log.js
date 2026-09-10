@@ -44,6 +44,7 @@ function log(levelName, msg, fields) {
   });
   if (req.requestId) record.request_id = req.requestId;
   if (req.traceId) record.trace_id = req.traceId;
+  if (req.spanId) record.span_id = req.spanId;
 
   const line = JSON.stringify(record);
   stream.write(line + '\n');

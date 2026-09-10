@@ -36,3 +36,12 @@ func TestTraceIDReserved(t *testing.T) {
 	assert.Equal(t, "trace-abc", TraceID(ctx))
 	assert.Equal(t, "", RequestID(ctx))
 }
+
+func TestSpanIDReserved(t *testing.T) {
+	// span_id 预留注入位：与 trace_id 同为二期预留，且互不干扰。
+	ctx := WithTraceID(context.Background(), "trace-abc")
+	ctx = WithSpanID(ctx, "span-xyz")
+	assert.Equal(t, "span-xyz", SpanID(ctx))
+	assert.Equal(t, "trace-abc", TraceID(ctx))
+	assert.Equal(t, "", SpanID(context.Background()))
+}

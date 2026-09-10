@@ -1,4 +1,4 @@
-"""log 模块单测：静态字段注入、community 双层注入、level 过滤、trace_id 预留。"""
+"""log 模块单测：静态字段注入、community 双层注入、level 过滤、trace_id/span_id 预留。"""
 
 import io
 import json
@@ -51,9 +51,10 @@ def test_static_fields_injected():
     assert f["level"] == "info"
     assert f["msg"] == "hello"
     assert f["event"] == "pull_request"
-    # 无请求上下文时不输出 request_id / trace_id。
+    # 无请求上下文时不输出 request_id / trace_id / span_id。
     assert "request_id" not in f
     assert "trace_id" not in f
+    assert "span_id" not in f
 
 
 def test_business_extra_overrides_nothing_common():
@@ -96,6 +97,26 @@ def test_trace_id_reserved_inject():
     f = _lines(buf)[0]
     assert f["trace_id"] == "trace-xyz"
     assert f["community"] == "openeuler"
+    # 未 bind span_id 时不输出该键。
+    assert "span_id" not in f
+
+
+def test_span_id_reserved_inject():
+    from obs_sdk import _context
+    buf = _capture(community="openeuler")
+    logger = log.get_logger("t")
+    with _context.bind(trace_id="trace-xyz", span_id="span-abc"):
+        logger.info("with span")
+    f = _lines(buf)[0]
+    assert f["span_id"] == "span-abc"
+    assert f["trace_id"] == "trace-xyz"
+    # span_id 与 trace_id 互不干扰：只 bind span_id 时 trace_id 不出现。
+    buf2 = _capture(community="openeuler")
+    with _context.bind(span_id="span-only"):
+        log.get_logger("t").info("span only")
+    f2 = _lines(buf2)[0]
+    assert f2["span_id"] == "span-only"
+    assert "trace_id" not in f2
 
 
 def test_error_field_on_exception():

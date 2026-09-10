@@ -1,6 +1,6 @@
-# 通用字段契约 — service / env / instance / community / request_id / trace_id
+# 通用字段契约 — service / env / instance / community / request_id / trace_id / span_id
 
-> 6 个通用字段是所有 log 与 metrics 的公共标识维度。字段语义、来源、注入规则在此统一。
+> 7 个通用字段是所有 log 与 metrics 的公共标识维度。字段语义、来源、注入规则在此统一。
 
 ## 字段总表
 
@@ -12,6 +12,7 @@
 | `community` | 社区标识 | string | Init（进程级默认） **+** 请求上下文（覆盖） | 双态 |
 | `request_id` | 单请求关联 ID | string | 请求上下文 | 动态 |
 | `trace_id` | 分布式 trace ID（二期接入） | string | 请求上下文（预留） | 动态/预留 |
+| `span_id` | 分布式 trace 内的 span 标识（二期接入） | string | 请求上下文（预留） | 动态/预留 |
 
 ## 静态字段来源与默认值
 
@@ -61,7 +62,9 @@
 - SDK 中间件：入口中间件若上下文无 request_id 则生成并写入；日志绑定上下文时带上。
 - 出站调用传播：作为头/字段传给下游服务（语言 SDK 提供 outbound 侧 helper），保证全链路同 ID。
 
-## trace_id 预留位
+## trace_id / span_id 预留位
 
-- 二期接 OpenTelemetry 后，trace 经 context 注入；日志上下文里的 `trace_id` 即取自该 context。
-- 首期：`trace_id` 注入位必须存在（log 上下文 API 有对应字段位置、metrics label 有对应位但可省略），值恒空。目标：二期 trace 接入时**零日志格式返工**。
+- 二期接 OpenTelemetry 后，trace / span 经 context 注入；日志上下文里的 `trace_id`、`span_id` 即取自该 context。
+- 首期：两个注入位必须存在（log 上下文 API 有对应字段位置、metrics label 有对应位但可省略），值恒空。
+  目标：二期 trace 接入时**零日志格式返工**。
+- 两者都是**高基数**值（每请求/每 span 唯一），只入日志，**禁止作 metrics label**（见 metrics-format.md）。

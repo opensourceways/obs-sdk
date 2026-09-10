@@ -4,7 +4,7 @@ opensourceways 微服务可观测薄封装 SDK 的 Python 实现，契约见 [sp
 
 - **日志**：`obs_sdk.log` —— 结构化 JSON（root logger 挂唯一 JsonHandler，字段规范见 spec/log-format.md）
 - **指标**：`obs_sdk.metrics` —— prometheus-client 薄封装，自带独立 CollectorRegistry
-- **请求上下文**：`obs_sdk._context` —— `contextvars` 承载 `community/request_id/trace_id`
+- **请求上下文**：`obs_sdk._context` —— `contextvars` 承载 `community/request_id/trace_id/span_id`（后两者为二期 trace 预留位）
 - **框架适配**：`obs_sdk.middleware` —— FastAPI / Flask / Django 中间件（注入 request_id + 可信判定点解析 community）
 - **community 双层注入**：`service/env/instance` 常驻 const；`community` 可变 —— 请求上下文覆盖（`_context.bind`），未覆盖回退部署默认（`OBS_*` 环境变量）
 

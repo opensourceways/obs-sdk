@@ -7,7 +7,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
 /**
- * 请求级上下文：承载 {@code community / request_id / trace_id} 三个请求字段，
+ * 请求级上下文：承载 {@code community / request_id / trace_id / span_id} 四个请求字段，
  * 语义与其它语言 SDK 对齐 —— Go sdkctx(context.Context)、Python contextvars、Node AsyncLocalStorage。
  *
  * <p>community 双层注入（见 spec/common-fields.md、community-values.md）：
@@ -16,8 +16,8 @@ import java.util.function.Supplier;
  * 后，通过 {@link #push} 写入本上下文；指标与日志读取 {@link #communityOverride()}，
  * 未覆盖时回退部署默认。
  *
- * <p>{@code trace_id} 为预留位（首期不做 trace）：本次只保证字段在上下文中可写入、可透传，
- * 供后续 trace 接入时读取，不产生任何 span。
+ * <p>{@code trace_id} / {@code span_id} 为预留位（首期不做 trace）：本次只保证字段在上下文中
+ * 可写入、可透传，供后续 trace 接入时读取，不产生任何 span。
  */
 public final class RequestContext {
 
@@ -27,21 +27,33 @@ public final class RequestContext {
     private final String community;
     private final String requestId;
     private final String traceId;
+    private final String spanId;
 
-    private RequestContext(String community, String requestId, String traceId) {
+    private RequestContext(String community, String requestId, String traceId, String spanId) {
         this.community = community;
         this.requestId = requestId;
         this.traceId = traceId;
+        this.spanId = spanId;
     }
 
-    /** 构造一个请求字段快照（通常由中间件调用）。 */
+    /** 构造一个请求字段快照（通常由中间件调用）。{@code span_id} 为二期预留，首期传 null。 */
     public static RequestContext of(String community, String requestId, String traceId) {
-        return new RequestContext(community, requestId, traceId);
+        return new RequestContext(community, requestId, traceId, null);
+    }
+
+    /** 构造一个请求字段快照，含二期预留的 {@code span_id}。 */
+    public static RequestContext of(String community, String requestId, String traceId, String spanId) {
+        return new RequestContext(community, requestId, traceId, spanId);
     }
 
     /** 用给定字段绑定当前线程，返回作用域句柄；离开作用域（close）后自动还原。 */
     public static Scope push(String community, String requestId, String traceId) {
         return push(of(community, requestId, traceId));
+    }
+
+    /** 同 {@link #push(String, String, String)}，额外携带二期预留的 {@code span_id}。 */
+    public static Scope push(String community, String requestId, String traceId, String spanId) {
+        return push(of(community, requestId, traceId, spanId));
     }
 
     /** 同 {@link #push(String, String, String)}，复用已有快照。 */
@@ -99,6 +111,11 @@ public final class RequestContext {
         return current().map(ctx -> ctx.traceId);
     }
 
+    /** 请求级 span_id（预留）。 */
+    public static Optional<String> currentSpanId() {
+        return current().map(ctx -> ctx.spanId);
+    }
+
     /** 供日志装配读取的字段快照（写入 MDC）。 */
     public Map<String, String> asMdcFields() {
         Map<String, String> fields = new HashMap<>();
@@ -110,6 +127,9 @@ public final class RequestContext {
         }
         if (traceId != null) {
             fields.put("trace_id", traceId);
+        }
+        if (spanId != null) {
+            fields.put("span_id", spanId);
         }
         return fields;
     }
@@ -124,6 +144,10 @@ public final class RequestContext {
 
     public String traceId() {
         return traceId;
+    }
+
+    public String spanId() {
+        return spanId;
     }
 
     /** 作用域句柄：{@link RequestContext#push} 的返回，close 时还原线程上下文。 */

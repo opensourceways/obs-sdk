@@ -5,7 +5,7 @@ opensourceways 微服务可观测薄封装 SDK 的 Java 实现，契约见根目
 
 - **community 双层注入**：`service/env/instance` 为部署级 const label，`community` 建模为普通可变 label，
   值取请求上下文覆盖（可信判定点写入），未覆盖回退部署默认 —— 「注册一次两用」。
-- **`trace_id` 预留**：首期只保证字段可写可透传，不落 span。
+- **`trace_id` / `span_id` 预留**：首期只保证字段可写可透传，不落 span。
 - **日志**：结构化 JSON（logback + logstash JSON encoder，MDC 输出固定键）。
 - **指标**：Micrometer + Prometheus registry 薄封装（业务 counter/gauge/histogram）；
   HTTP 服务端指标不重复造轮子，Java 服务走 Spring Boot Actuator + Micrometer 官方 server instrumentation。
@@ -14,8 +14,9 @@ opensourceways 微服务可观测薄封装 SDK 的 Java 实现，契约见根目
 
 | 组件 | 说明 |
 | --- | --- |
-| `context.RequestContext` | 请求级上下文（community/request_id/trace_id），ThreadLocal 作用域句柄，对齐其它语言的 sdkctx/contextvars/ALS |
-| `log.ObsLogging` | 部署默认字段 + 请求覆盖字段写入 SLF4J MDC，由 JSON encoder 输出 |
+| `context.RequestContext` | 请求级上下文（community/request_id/trace_id/span_id），ThreadLocal 作用域句柄，对齐其它语言的 sdkctx/contextvars/ALS |
+| `log.ObsLogging` | 部署默认字段 + 请求覆盖字段写入 SLF4J MDC |
+| `log.ObsJsonProvider` | logstash-logback-encoder 的 provider：按契约输出固定字段（时间/级别/字段名/顺序/异常堆栈） |
 | `ObsMetrics` | 业务指标装配（common tags + community 动态 label + namespace 前缀） |
 | `middleware.ObsFilter` | 可选 Servlet Filter：注入 request_id + 可信判定点解析 community → RequestContext + MDC |
 
@@ -113,8 +114,31 @@ public FilterRegistrationBean<ObsFilter> obsFilter() {
 ## 日志 JSON 输出
 
 把 `examples/logback-json.xml` 拷成接入服务的 logback 配置并引入 `logstash-logback-encoder`，
-日志即输出单行 JSON（固定键 `service/env/instance/community/request_id/trace_id`），例：
+日志即输出单行 JSON，例：
 
 ```json
-{"@timestamp":"2026-09-08T09:00:00.000+08:00","level":"INFO","logger_name":"com.x.ReviewSvc","message":"hello","service":"review","env":"test","instance":"pod-1","community":"openeuler"}
+{"time":"2026-09-10T08:13:42.725Z","level":"info","msg":"job done","service":"review","env":"test","instance":"pod-1","community":"openEuler","request_id":"req-1","logger":"ReviewSvc.java:51"}
 ```
+
+固定字段的顺序、取值与缺失规则均由 SDK 的 `ObsJsonProvider` 保证，接入方无需（也无法）逐项配置：
+
+| 字段 | 说明 |
+| --- | --- |
+| `time` | 固定毫秒精度 UTC，以 `Z` 结尾（不受 JVM 时区影响） |
+| `level` | 小写 `debug` / `info` / `warn` / `error`（`TRACE` 归入 `debug`） |
+| `msg` | 格式化后的消息 |
+| `service` / `env` / `instance` / `community` | 来自 MDC（`ObsLogging.init` 登记，`community` 可被请求上下文覆盖） |
+| `request_id` / `trace_id` / `span_id` | 请求级，来自 MDC；空值省略（后两者为二期预留） |
+| `logger` | 调用位置 `文件:行号`（对齐 Go 侧语义） |
+| `error` | 异常完整堆栈，仅在有 throwable 时出现 |
+
+> **为什么不用 encoder 自带的 provider**：`<logLevel/>` 只能输出大写 `INFO`（7.4 无配置项可改
+> 大小写，`<logLevelValue/>` 输出的是数字），字段名走 `LogstashFieldNames` 而
+> `LoggingEventCompositeJsonEncoder` 没有 `setFieldNames`，且不配 `<stackTrace/>` 时
+> **throwable 会被整条丢弃**。故固定字段这一层由 SDK 自己的 provider 承担。
+>
+> 业务字段不属于固定字段，可在 `ObsJsonProvider` **之后**追加 `<mdc>` / `<keyValuePairs/>`
+> 等 provider，输出会落在固定字段之后。
+
+> 依赖：`logstash-logback-encoder` 与 `jackson-core` 在本 SDK 中为 `provided` scope
+> （`ObsJsonProvider` 需要它们编译），运行时由接入服务提供，不随 SDK 传递。
