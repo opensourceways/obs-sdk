@@ -33,7 +33,8 @@ jobs:
       - name: install sdk
         run: pip install -e python
       - name: install framework + test deps
-        run: pip install 'fastapi>=0.100' 'flask>=2.0' 'django>=4.0' 'pytest>=8.0'
+        # httpx2：starlette.testclient（FastAPI 中间件单测用）的传输依赖，缺了会 RuntimeError
+        run: pip install 'fastapi>=0.100' 'flask>=2.0' 'django>=4.0' 'pytest>=8.0' 'httpx2>=2.0.0'
       - name: pytest
         working-directory: python
         run: python -m pytest -q

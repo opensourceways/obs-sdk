@@ -12,6 +12,9 @@ dist/
 # Go
 *.test
 
+# Java
+target/
+
 # 编辑器/系统
 .DS_Store
 *.swp

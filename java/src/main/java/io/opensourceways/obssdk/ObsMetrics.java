@@ -15,7 +15,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicDouble;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 指标装配：对 Micrometer + Prometheus registry 的薄封装，语义与 Go/Python/Node SDK 对齐
@@ -163,7 +163,7 @@ public final class ObsMetrics {
         private final String name;
         private final String help;
         private final String[] labelNames;
-        private final ConcurrentHashMap<String, AtomicDouble> states = new ConcurrentHashMap<>();
+        private final ConcurrentHashMap<String, AtomicReference<Double>> states = new ConcurrentHashMap<>();
 
         private GaugeVec(String name, String help, String[] labelNames) {
             this.name = name;
@@ -175,7 +175,7 @@ public final class ObsMetrics {
             child(labelValues).set(value);
         }
 
-        private AtomicDouble child(String... labelValues) {
+        private AtomicReference<Double> child(String... labelValues) {
             if (labelValues.length != labelNames.length) {
                 throw new IllegalArgumentException(
                         "label 数量不匹配: names=" + labelNames.length + " values=" + labelValues.length);
@@ -193,14 +193,15 @@ public final class ObsMetrics {
                 keyParts.add(v);
             }
             String key = keyParts.toString();
-            AtomicDouble state = states.get(key);
+            AtomicReference<Double> state = states.get(key);
             if (state == null) {
-                AtomicDouble created = new AtomicDouble();
-                Gauge.builder(name, created, AtomicDouble::doubleValue)
+                // JDK 无 AtomicDouble（Guava 才有），用 AtomicReference<Double> 存可写 gauge 值，默认 0.0
+                AtomicReference<Double> created = new AtomicReference<>(0.0d);
+                Gauge.builder(name, created, ref -> ref.get())
                         .description(help)
                         .tags(tags)
                         .register(registry);
-                AtomicDouble raced = states.putIfAbsent(key, created);
+                AtomicReference<Double> raced = states.putIfAbsent(key, created);
                 state = raced == null ? created : raced;
             }
             return state;

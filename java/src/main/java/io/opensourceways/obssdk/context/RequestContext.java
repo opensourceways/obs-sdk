@@ -90,12 +90,12 @@ public final class RequestContext {
     }
 
     /** 请求级 request_id。 */
-    public static Optional<String> requestId() {
+    public static Optional<String> currentRequestId() {
         return current().map(ctx -> ctx.requestId);
     }
 
     /** 请求级 trace_id（预留）。 */
-    public static Optional<String> traceId() {
+    public static Optional<String> currentTraceId() {
         return current().map(ctx -> ctx.traceId);
     }
 

@@ -15,12 +15,12 @@ class RequestContextTest {
 
         try (RequestContext.Scope s = RequestContext.push("openeuler", "req-1", "trace-1")) {
             assertEquals("openeuler", RequestContext.communityOverride().orElse(null));
-            assertEquals("req-1", RequestContext.requestId().orElse(null));
-            assertEquals("trace-1", RequestContext.traceId().orElse(null));
+            assertEquals("req-1", RequestContext.currentRequestId().orElse(null));
+            assertEquals("trace-1", RequestContext.currentTraceId().orElse(null));
         }
 
         assertFalse(RequestContext.communityOverride().isPresent());
-        assertFalse(RequestContext.requestId().isPresent());
+        assertFalse(RequestContext.currentRequestId().isPresent());
     }
 
     @Test
@@ -30,7 +30,7 @@ class RequestContextTest {
                 assertEquals("mindspore", RequestContext.communityOverride().orElse(null));
             }
             assertEquals("openeuler", RequestContext.communityOverride().orElse(null));
-            assertEquals("r-outer", RequestContext.requestId().orElse(null));
+            assertEquals("r-outer", RequestContext.currentRequestId().orElse(null));
         }
         assertFalse(RequestContext.communityOverride().isPresent());
     }
