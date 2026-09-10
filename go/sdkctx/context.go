@@ -1,5 +1,5 @@
-// Package sdkctx 定义请求级通用字段（community / request_id / trace_id）在
-// context.Context 中的读写。log 与 metrics 两个 SDK package 共用本包，保证
+// Package sdkctx 定义请求级通用字段（community / request_id / trace_id / span_id）
+// 在 context.Context 中的读写。log 与 metrics 两个 SDK package 共用本包，保证
 // 双层注入（部署级默认 + 请求级覆盖）取自同一来源。
 //
 // 设计约束（见 spec/common-fields.md）：请求级 community 必须由业务在可信判定点
@@ -19,6 +19,8 @@ type Request struct {
 	RequestID string
 	// TraceID 预留位（二期 trace 接入）；本期恒为空。
 	TraceID string
+	// SpanID 预留位（二期 trace 接入）；本期恒为空。
+	SpanID string
 }
 
 // WithCommunity 返回一个携带 community 覆盖值的新 context。
@@ -35,6 +37,11 @@ func WithRequestID(ctx context.Context, requestID string) context.Context {
 // WithTraceID 返回一个携带 trace_id 的新 context（二期 trace 预留注入点）。
 func WithTraceID(ctx context.Context, traceID string) context.Context {
 	return withField(ctx, func(r *Request) { r.TraceID = traceID })
+}
+
+// WithSpanID 返回一个携带 span_id 的新 context（二期 trace 预留注入点）。
+func WithSpanID(ctx context.Context, spanID string) context.Context {
+	return withField(ctx, func(r *Request) { r.SpanID = spanID })
 }
 
 // From 取出 context 中携带的请求级字段；未设置时返回零值 Request。
@@ -61,6 +68,11 @@ func RequestID(ctx context.Context) string {
 // TraceID 返回当前 trace_id；未设置返回空串。
 func TraceID(ctx context.Context) string {
 	return From(ctx).TraceID
+}
+
+// SpanID 返回当前 span_id；未设置返回空串。
+func SpanID(ctx context.Context) string {
+	return From(ctx).SpanID
 }
 
 func withField(ctx context.Context, mutate func(*Request)) context.Context {
