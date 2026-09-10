@@ -2,8 +2,17 @@
 <!--
   结构化 JSON 日志装配示例（logback + logstash-logback-encoder）。
 
-  输出为单行 JSON；MDC 里 spec 固定字段（service/env/instance/community/request_id/trace_id）
-  由 ObsLogging 写入后在此显式列出，与 spec/log-format.md 对齐。
+  固定字段由 SDK 的 io.opensourceways.obssdk.log.ObsJsonProvider 统一输出，
+  按 spec/log-format.md 的契约顺序与取值：
+      time / level / msg / service / env / instance / community /
+      request_id / trace_id / span_id / logger / error
+  其中 time 为固定毫秒 UTC（以 Z 结尾）、level 为小写、logger 为调用位置 file:line，
+  error 为异常完整堆栈（仅在携带 throwable 时出现）。
+
+  为什么不逐项用 encoder 自带 provider：<logLevel/> 只能输出大写 INFO（7.4 无配置项
+  可改），字段名走 LogstashFieldNames 而 composite encoder 没有 setFieldNames，
+  且不配 <stackTrace/> 时 throwable 会被整条丢弃。详见 ObsJsonProvider 的类注释。
+
   用法：把本文件拷成接入服务的 logback-spring.xml（Spring Boot 用）或 classpath:logback.xml，
   并依赖 logstash-logback-encoder（provided scope 需要接入服务自行引入）：
       <dependency>
@@ -16,22 +25,14 @@
   <appender name="STDOUT_JSON" class="ch.qos.logback.core.ConsoleAppender">
     <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
       <providers>
-        <timestamp/>
-        <version/>
-        <logLevel/>
-        <loggerName/>
-        <message/>
-        <mdc>
-          <!-- 只输出 obs-sdk 的固定键；日志同时带 request_id/trace_id/span_id 供检索串联
-               （trace_id/span_id 为二期 trace 预留位，首期不写入 MDC，故不会出现） -->
-          <key>service</key>
-          <key>env</key>
-          <key>instance</key>
-          <key>community</key>
-          <key>request_id</key>
-          <key>trace_id</key>
-          <key>span_id</key>
-        </mdc>
+        <!-- 契约固定字段，顺序与取值由 SDK 保证 -->
+        <provider class="io.opensourceways.obssdk.log.ObsJsonProvider"/>
+
+        <!-- 业务字段（不属于契约固定字段）追加在本行之后，会落在固定字段之后。
+             例如要额外输出某个 MDC 键：
+             <mdc><includeMdcKeyName>tenant_id</includeMdcKeyName></mdc>
+             或用 SLF4J 2 的结构化 API（log.atInfo().addKeyValue("todo_id", id)）
+             + <keyValuePairs/>。 -->
       </providers>
     </encoder>
     <target>System.out</target>

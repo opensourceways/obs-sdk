@@ -19,6 +19,7 @@
     <slf4j.version>2.0.13</slf4j.version>
     <logback.version>1.5.12</logback.version>
     <logstash-encoder.version>7.4</logstash-encoder.version>
+    <jackson.version>2.15.2</jackson.version>
     <junit.version>5.10.2</junit.version>
   </properties>
 
@@ -51,6 +52,14 @@
       <groupId>net.logstash.logback</groupId>
       <artifactId>logstash-logback-encoder</artifactId>
       <version>${logstash-encoder.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <!-- ObsJsonProvider 直接实现 logstash 的 JsonProvider 接口，用其 JsonGenerator 写 JSON
+         （转义交给 Jackson，避免手写转义）。版本与 logstash-logback-encoder 7.4 对齐。 -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-core</artifactId>
+      <version>${jackson.version}</version>
       <scope>provided</scope>
     </dependency>
     <!-- 可选 Servlet Filter（Java 版请求上下文中间件）；由接入 web 框架的服务引入 -->
