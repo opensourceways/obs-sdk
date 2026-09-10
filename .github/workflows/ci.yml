@@ -1,0 +1,68 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  go:
+    name: go test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: go
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go/go.mod
+      - name: go vet
+        run: go vet ./...
+      - name: go test
+        run: go test ./...
+
+  python:
+    name: python pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: install sdk
+        run: pip install -e python
+      - name: install framework + test deps
+        # httpx2：starlette.testclient（FastAPI 中间件单测用）的传输依赖，缺了会 RuntimeError
+        run: pip install 'fastapi>=0.100' 'flask>=2.0' 'django>=4.0' 'pytest>=8.0' 'httpx2>=2.0.0'
+      - name: pytest
+        working-directory: python
+        run: python -m pytest -q
+
+  node:
+    name: node test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: npm ci
+        working-directory: node
+        run: npm ci
+      - name: npm test
+        working-directory: node
+        run: npm test
+
+  java:
+    name: java mvn test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: mvn test
+        working-directory: java
+        run: mvn -B test

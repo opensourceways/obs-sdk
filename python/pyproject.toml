@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "obs-sdk-python"
+version = "0.1.0"
+description = "opensourceways 微服务可观测薄封装 SDK（Python）——结构化 JSON 日志 + Prometheus 指标，契约见 ../spec"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "prometheus-client>=0.20",
+]
+
+[project.optional-dependencies]
+fastapi = ["fastapi>=0.100"]
+flask = ["flask>=2.0"]
+django = ["django>=4.0"]
+test = [
+    "pytest>=8.0",
+    # starlette.testclient（FastAPI 中间件单测）的传输依赖；不装则 testclient 抛 RuntimeError
+    "httpx2>=2.0.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["obs_sdk*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
