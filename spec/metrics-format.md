@@ -24,7 +24,7 @@ SDK 统一为所有注册的指标自动附加以下 **const label**（值来自
 | `community` | Init 默认 **+ 请求级覆盖** | 见下节——唯一一个可动态的公共 label |
 
 > 其余业务维度 label（`endpoint` / `method` / `status` / `code` 等）由业务/中间件按需声明。
-> **禁止**把 `request_id` 等高基数值当 label——会撑爆时序基数。
+> **禁止**把 `request_id` / `trace_id` / `span_id` 等高基数值当 label——会撑爆时序基数。
 
 ## community 双层注入在指标上的实现
 
