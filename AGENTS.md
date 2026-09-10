@@ -31,7 +31,9 @@ node/     obs-sdk-node   —— lib/{log,metrics,context,middleware}
 java/     obs-sdk-java   —— io.opensourceways.obssdk.{ObsSdkConfig,ObsMetrics,log,context,middleware}
 ```
 
-各语言子目录自管版本（`go.mod` / `pyproject.toml` / `pom.xml` / `package.json`），Git tag 用 `go-v1.0.0` 等前缀区分。
+各语言子目录自管版本（`go.mod` / `pyproject.toml` / `pom.xml` / `package.json`），Git tag 按语言加前缀区分。
+**Go 模块的 tag 必须是 `<子目录>/v<版本>` 形式**（如 `go/v1.0.0`）—— Go 工具链按模块根所在子目录解析 tag，
+写成 `go-v1.0.0` 这种连字符形式 `go get` 拉不到该模块；其余语言无此约束。
 
 ## 契约速查
 
