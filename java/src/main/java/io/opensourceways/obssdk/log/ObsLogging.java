@@ -11,8 +11,9 @@ import java.util.Optional;
  * 由接入服务的 logback JSON encoder（logstash-logback-encoder，见
  * {@code examples/logback-json.xml}）输出为单行 JSON。
  *
- * <p>固定键：{@code service / env / instance / community / request_id / trace_id}
- * （与 spec/common-fields.md、spec/log-format.md 对齐）。
+ * <p>固定键：{@code service / env / instance / community / request_id / trace_id / span_id}
+ * （与 spec/common-fields.md、spec/log-format.md 对齐）；{@code trace_id} / {@code span_id}
+ * 为二期 trace 预留位，首期恒空、不写入 MDC。
  *
  * <p>community 双层注入与其它语言 SDK 一致：部署级默认来自 {@code OBS_*}/Config，
  * 请求级由中间件在可信判定点解析后经 {@link RequestContext#push} 写入，
@@ -26,6 +27,7 @@ public final class ObsLogging {
     public static final String MDC_COMMUNITY = "community";
     public static final String MDC_REQUEST_ID = "request_id";
     public static final String MDC_TRACE_ID = "trace_id";
+    public static final String MDC_SPAN_ID = "span_id";
 
     private static volatile ObsSdkConfig cfg;
 
@@ -56,6 +58,9 @@ public final class ObsLogging {
         Optional<String> traceId = request != null && request.traceId() != null
                 ? Optional.of(request.traceId())
                 : Optional.empty();
+        Optional<String> spanId = request != null && request.spanId() != null
+                ? Optional.of(request.spanId())
+                : Optional.empty();
 
         String base = cfg != null ? cfg.community() : null;
         MDC.put(MDC_COMMUNITY, community.orElse(base != null ? base : ""));
@@ -65,12 +70,16 @@ public final class ObsLogging {
         if (traceId.isPresent()) {
             MDC.put(MDC_TRACE_ID, traceId.get());
         }
+        if (spanId.isPresent()) {
+            MDC.put(MDC_SPAN_ID, spanId.get());
+        }
     }
 
     /** 请求结束时清理请求级字段，避免线程复用串染（MDC 由框架在线程回收时兜底）。 */
     public static void clearRequestScope() {
         MDC.remove(MDC_REQUEST_ID);
         MDC.remove(MDC_TRACE_ID);
+        MDC.remove(MDC_SPAN_ID);
     }
 
     private static String nvl(String v) {

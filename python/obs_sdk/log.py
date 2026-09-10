@@ -3,8 +3,8 @@
 格式遵循 spec/log-format.md：
   - 单行 JSON，经 stdout 进 LTS；
   - 常驻字段 service/env/instance/community 在 init 时注入；
-  - 请求级 community 覆盖 / request_id / trace_id 从 _context 读取；
-  - trace_id 预留位（有值才输出，二期经 _context.bind(trace_id=...) 注入）。
+  - 请求级 community 覆盖 / request_id / trace_id / span_id 从 _context 读取；
+  - trace_id / span_id 预留位（有值才输出，二期经 _context.bind(trace_id=..., span_id=...) 注入）。
 
 用法：
 
@@ -67,6 +67,8 @@ class JsonFormatter(logging.Formatter):
             fields["request_id"] = req.request_id
         if req.trace_id:
             fields["trace_id"] = req.trace_id
+        if req.span_id:
+            fields["span_id"] = req.span_id
 
         # 常驻字段最后写入 → 覆盖同名 extra，保证统一。
         fields.update({

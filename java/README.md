@@ -5,7 +5,7 @@ opensourceways 微服务可观测薄封装 SDK 的 Java 实现，契约见根目
 
 - **community 双层注入**：`service/env/instance` 为部署级 const label，`community` 建模为普通可变 label，
   值取请求上下文覆盖（可信判定点写入），未覆盖回退部署默认 —— 「注册一次两用」。
-- **`trace_id` 预留**：首期只保证字段可写可透传，不落 span。
+- **`trace_id` / `span_id` 预留**：首期只保证字段可写可透传，不落 span。
 - **日志**：结构化 JSON（logback + logstash JSON encoder，MDC 输出固定键）。
 - **指标**：Micrometer + Prometheus registry 薄封装（业务 counter/gauge/histogram）；
   HTTP 服务端指标不重复造轮子，Java 服务走 Spring Boot Actuator + Micrometer 官方 server instrumentation。
@@ -14,7 +14,7 @@ opensourceways 微服务可观测薄封装 SDK 的 Java 实现，契约见根目
 
 | 组件 | 说明 |
 | --- | --- |
-| `context.RequestContext` | 请求级上下文（community/request_id/trace_id），ThreadLocal 作用域句柄，对齐其它语言的 sdkctx/contextvars/ALS |
+| `context.RequestContext` | 请求级上下文（community/request_id/trace_id/span_id），ThreadLocal 作用域句柄，对齐其它语言的 sdkctx/contextvars/ALS |
 | `log.ObsLogging` | 部署默认字段 + 请求覆盖字段写入 SLF4J MDC，由 JSON encoder 输出 |
 | `ObsMetrics` | 业务指标装配（common tags + community 动态 label + namespace 前缀） |
 | `middleware.ObsFilter` | 可选 Servlet Filter：注入 request_id + 可信判定点解析 community → RequestContext + MDC |
@@ -113,7 +113,7 @@ public FilterRegistrationBean<ObsFilter> obsFilter() {
 ## 日志 JSON 输出
 
 把 `examples/logback-json.xml` 拷成接入服务的 logback 配置并引入 `logstash-logback-encoder`，
-日志即输出单行 JSON（固定键 `service/env/instance/community/request_id/trace_id`），例：
+日志即输出单行 JSON（固定键 `service/env/instance/community/request_id/trace_id/span_id`），例：
 
 ```json
 {"@timestamp":"2026-09-08T09:00:00.000+08:00","level":"INFO","logger_name":"com.x.ReviewSvc","message":"hello","service":"review","env":"test","instance":"pod-1","community":"openeuler"}

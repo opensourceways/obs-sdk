@@ -26,16 +26,22 @@ function traceId() {
   return current().traceId || null;
 }
 
-// bindRequest(store, fn)：在 store（{community?, requestId?, traceId?}）内执行 fn。
+function spanId() {
+  return current().spanId || null;
+}
+
+// bindRequest(store, fn)：在 store（{community?, requestId?, traceId?, spanId?}）内执行 fn。
 // 会与已有上下文合并（缺省字段继承外层）。
+// traceId / spanId 为二期 trace 预留注入位，首期恒空、有值才输出。
 function bindRequest(fields, fn) {
   const prev = storage.getStore() || {};
   const merged = {
     community: fields.community !== undefined ? fields.community : prev.community,
     requestId: fields.requestId !== undefined ? fields.requestId : prev.requestId,
     traceId: fields.traceId !== undefined ? fields.traceId : prev.traceId,
+    spanId: fields.spanId !== undefined ? fields.spanId : prev.spanId,
   };
   return storage.run(merged, fn);
 }
 
-module.exports = { current, community, requestId, traceId, bindRequest };
+module.exports = { current, community, requestId, traceId, spanId, bindRequest };

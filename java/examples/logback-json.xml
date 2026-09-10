@@ -22,13 +22,15 @@
         <loggerName/>
         <message/>
         <mdc>
-          <!-- 只输出 obs-sdk 的固定键；日志同时带 request_id/trace_id 供检索串联 -->
+          <!-- 只输出 obs-sdk 的固定键；日志同时带 request_id/trace_id/span_id 供检索串联
+               （trace_id/span_id 为二期 trace 预留位，首期不写入 MDC，故不会出现） -->
           <key>service</key>
           <key>env</key>
           <key>instance</key>
           <key>community</key>
           <key>request_id</key>
           <key>trace_id</key>
+          <key>span_id</key>
         </mdc>
       </providers>
     </encoder>
