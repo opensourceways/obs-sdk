@@ -74,10 +74,49 @@ def test_gauge_and_histogram():
     assert count[0].endswith(" 2.0")
 
 
-def test_metrics_singleton_env():
-    # 便捷单例 init 幂等。
-    metrics.init(service="srv", community="ascend")
-    a = metrics.default()
-    metrics.init(service="ignored")  # 已建不重建
-    assert metrics.default() is a
-    assert metrics.default().default_community == "ascend"
+def test_metrics_init_always_rebuilds(monkeypatch):
+    # 与 log.init 统一：可重复调用，最后一次生效（重建实例与注册表）。
+    for key in ("OBS_SERVICE", "OBS_ENV", "OBS_INSTANCE", "OBS_COMMUNITY"):
+        monkeypatch.delenv(key, raising=False)
+    first = metrics.init(service="srv", community="ascend")
+    assert metrics.default() is first
+    second = metrics.init(service="srv", community="mindspore")
+    assert second is not first
+    assert metrics.default() is second
+    assert metrics.default().default_community == "mindspore"
+
+
+def test_fields_fallback_when_not_configured(monkeypatch):
+    # 同 Java：构造时即完成三级解析，空 label 不可接受 —— 空值会被注册表跳过，
+    # 该 series 与其它语言对不上，按 label 过滤时静默漏数。
+    for key in ("OBS_SERVICE", "OBS_ENV", "OBS_INSTANCE", "OBS_COMMUNITY"):
+        monkeypatch.delenv(key, raising=False)
+    m = metrics.Metrics()  # 一个参数都不给
+    m.counter("events_total", "events", ["kind"]).inc(kind="pr")
+
+    rows = [l for l in m.text().decode().splitlines()
+            if re.match(r"^events_total\{", l)]
+    assert len(rows) == 1
+    for label in ("service", "env", "instance", "community"):
+        assert f'{label}=""' not in rows[0], rows[0]
+        assert f'{label}="' in rows[0], rows[0]
+
+
+def test_http_server_handle_registered_once():
+    # http_server() 幂等：prometheus_client 同名重复注册会抛 ValueError，
+    # 缓存句柄是中间件能在多请求下存活的唯一保障。
+    m = _new()
+    server = m.http_server()
+    assert m.http_server() is server
+
+    server.observe_request(method="GET", path="/items/{item_id}",
+                           status_code=200, seconds=0.01)
+    text = m.text().decode()
+    assert "obs_http_server_requests_total" in text
+    assert "obs_http_server_request_duration_seconds_bucket" in text
+    # 路由模板原样落成 label —— 中间件传什么就是什么。
+    assert 'path="/items/{item_id}"' in text
+    # 桶边界显式固定，含 prometheus_client 默认没有的 .005 / 10，且不含其默认多出的 .075。
+    assert 'le="0.005"' in text, text
+    assert 'le="10.0"' in text, text
+    assert 'le="0.075"' not in text, text

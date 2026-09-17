@@ -30,11 +30,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      - name: install sdk
-        run: pip install -e python
-      - name: install framework + test deps
-        # httpx2：starlette.testclient（FastAPI 中间件单测用）的传输依赖，缺了会 RuntimeError
-        run: pip install 'fastapi>=0.100' 'flask>=2.0' 'django>=4.0' 'pytest>=8.0' 'httpx2>=2.0.0'
+      - name: install sdk + test deps
+        # [test] extra 含 pytest / httpx2 与三个 Web 框架。框架必须硬装：中间件单测用
+        # pytest.importorskip，缺框架会静默跳过 —— CI 全绿但中间件零覆盖。
+        run: pip install -e 'python[test]'
       - name: pytest
         working-directory: python
         run: python -m pytest -q

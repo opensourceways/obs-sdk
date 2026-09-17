@@ -88,6 +88,31 @@ def test_level_filter():
     assert lines[0]["msg"] == "kept"
 
 
+def test_init_does_not_touch_root_level():
+    # root 是宿主应用的全局开关：SDK 把它压到 DEBUG，应用自己挂在 root 上的
+    # handler 也会开始收 DEBUG 记录。SDK 只在自己交出的 logger 上设级别。
+    root = logging.getLogger()
+    original = root.level
+    root.setLevel(logging.WARNING)
+    try:
+        buf = _capture(level="info")
+        assert root.level == logging.WARNING
+
+        logger = log.get_logger("t")
+        assert logger.level == logging.INFO
+        # 不传名字时返回 SDK 自己的 logger，而不是 root。
+        assert log.get_logger().name == log._SDK_LOGGER_NAME
+
+        # root 停在 WARNING 也不影响记录落盘：级别门限在命名 logger 上，
+        # 命中后经 propagate 由 root 上 SDK handler 输出（handler 级别决定）。
+        logger.info("kept")
+        lines = _lines(buf)
+        assert len(lines) == 1
+        assert lines[0]["msg"] == "kept"
+    finally:
+        root.setLevel(original)
+
+
 def test_trace_id_reserved_inject():
     from obs_sdk import _context
     buf = _capture(community="openeuler")

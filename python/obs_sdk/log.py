@@ -40,6 +40,10 @@ _RESERVED = {
 # 标识本 SDK 挂在 logger 上的 handler。
 _SDK_HANDLER_NAME = "obs-sdk-json"
 
+# SDK 自己的 logger 名。log.info(...) 这类便捷函数走它，而不是 root —— root 是
+# 宿主应用的全局开关，SDK 不去改它的 level（见 get_logger 注释）。
+_SDK_LOGGER_NAME = "obs_sdk"
+
 
 class JsonFormatter(logging.Formatter):
     """把日志记录格式化为单行 JSON。"""
@@ -130,7 +134,6 @@ def init(*, service: Optional[str] = None, env: Optional[str] = None,
     _log_level = getattr(logging, level.upper(), logging.INFO)
 
     root = logging.getLogger()
-    root.setLevel(logging.DEBUG)  # 过滤交给 formatter 层 SDK 自己的 handler 级别控制
 
     # 移除旧 SDK handler，挂新配置的。
     for h in list(root.handlers):
@@ -142,11 +145,23 @@ def init(*, service: Optional[str] = None, env: Optional[str] = None,
 
 
 def get_logger(name: Optional[str] = None) -> logging.Logger:
-    """返回一个 logger（命名或 root）。命名 logger 经 propagate 落到 root 的
-    JSON handler，单条日志只输出一次。"""
+    """返回一个可直接打点的 logger。
+
+    命名 logger 经 propagate 落到 root 上 SDK 挂的 JSON handler，单条日志只输出一次。
+    不传名字时返回 SDK 自己的 logger（**不是 root**）。
+
+    级别只设在 SDK 交出的这个 logger 上，不碰 root：root 是宿主应用的全局开关，
+    把它的 level 压到 DEBUG（此前行为）会让应用自己挂在 root 上的 handler 也开始
+    收到 DEBUG 记录 —— 一个 SDK 不该改动宿主的全局日志级别。代价是第三方库
+    （uvicorn / werkzeug 等）的日志级别由应用自己的配置决定，不再被 SDK 放宽。
+
+    返回的 logger 级别由 init(level=...) 决定；应用如需另行调整，自行 setLevel 即可。
+    """
     if _defaults is None:
         init()
-    return logging.getLogger(name)
+    logger = logging.getLogger(_SDK_LOGGER_NAME if name is None else name)
+    logger.setLevel(_log_level)
+    return logger
 
 
 # --- 便捷函数（命名 = 调用方模块名） ---
