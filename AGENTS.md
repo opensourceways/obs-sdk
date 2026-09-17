@@ -11,6 +11,9 @@ opensourceways 微服务的**可观测薄封装 SDK monorepo**：把「结构化
 
 需求：[backlog#1938](https://github.com/opensourceways/backlog/issues/1938) · 子任务：[backlog#2061](https://github.com/opensourceways/backlog/issues/2061)
 
+设计与工作量拆分见 [docs/微服务可观测性建设技术设计.md](docs/微服务可观测性建设技术设计.md)，
+进度与待办见 [docs/进度追踪.md](docs/进度追踪.md)。
+
 ## 铁律（改代码前必读）
 
 1. **`spec/` 是唯一事实来源**。涉及日志/指标字段名、取值、命名的改动，先改 spec，再改四个语言实现。实现与 spec 不一致时以 spec 为准。
@@ -46,7 +49,13 @@ Go 与 Java 按此顺序输出；Python / Node 业务字段在前，但字段名
 **`error`**：错误信息。Go 输出 `err.Error()` 文本（低基数）；Python 等有异常上下文的语言**可含完整 traceback**（多行，JSON 转义为 `\n`，仍是单行 JSON）。**该字段不适合聚合**（取值逐次不同），按错误类型聚合请用 `msg` 常量 + 业务字段。
 
 **community 双层注入**（四种语言同一语义，贯穿日志与指标）：
-- `service` / `env` / `instance`：**部署级** const，来自 Init 配置或 `OBS_SERVICE` / `OBS_ENV` / `OBS_INSTANCE` / `OBS_COMMUNITY` 环境变量。
+- `service` / `env` / `instance` / `community`（部署默认值）**四个部署级字段三级解析**：
+  **显式参数 > `OBS_SERVICE` / `OBS_ENV` / `OBS_INSTANCE` / `OBS_COMMUNITY` 环境变量 > 内置默认**。
+  内置默认是契约规定值（不是随手写的）：`service` / `env` / `community` = `unknown`，`instance` = hostname。
+  各语言只有一份解析实现：Go `internal/env`、Python `obs_sdk/_env.py`、Node `lib/env.js`、Java `internal/Env` —— 改兜底规则要四处同步。
+  **四个字段取值恒非空，兜底一级都不能少**：空值不会输出成 `unknown`，而是让日志 JSON 里该键**整条消失**
+  （provider 对空值省略该键）、指标 label 被整段跳过 —— 采集侧按字段建索引/过滤时静默漏数，且不报错。
+  少一级兜底，等价于这个字段根本没接进来。
 - `community`：普通**可变** label/字段 —— 请求上下文覆盖优先，未覆盖回退部署默认。中心化多社区服务靠它按请求区分。
 - `community` 取值枚举见 [spec/community-values.md](spec/community-values.md)，来源是 `opensourceways/infrastructure` 仓的 `service.yaml`（不是值就先去那里查，别自己编）。
 
@@ -144,7 +153,8 @@ obs.context.bindRequest({ community: 'mindspore', requestId: 'req-1' }, () => {
 ```java
 ObsSdkConfig cfg = ObsSdkConfig.builder()
         .service("review").env("test").instance("pod-1").community("openEuler")
-        .build();                      // 生产用 ObsSdkConfig.fromEnvironment() 读 OBS_*
+        .build();                      // 生产也可用 ObsSdkConfig.fromEnvironment()：
+                                       // OBS_* 未设置时回退内置默认（unknown / hostname），不会为空
 
 ObsLogging.init(cfg);                  // 部署级字段写入 MDC
 ObsMetrics m = ObsMetrics.of(cfg);
