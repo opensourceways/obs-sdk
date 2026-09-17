@@ -70,7 +70,13 @@ public final class ObsSdkConfig {
         return community;
     }
 
-    /** 可选命名空间前缀（跨服务共享 SDK 埋点时用 obs_ 等前缀区分，见 spec/metrics-format.md）。 */
+    /**
+     * 可选命名空间前缀，拼在指标名之前（如 {@code "review"} → {@code review_built_releases}）。
+     *
+     * <p>默认不设 —— 业务指标按 spec 应以 {@code <service>_} 开头，接入服务可用它把
+     * service 前缀一并交给 SDK 拼；**不要**用来补 SDK 保留前缀，spec 不为中间件公共指标
+     * 定义任何前缀（同一条 series 已带 {@code service} label）。</p>
+     */
     public String namespace() {
         return namespace;
     }

@@ -4,7 +4,8 @@
 //
 // 职责（薄装配，见 spec/common-fields.md）：注入 request_id（沿用可信入站头
 // X-Request-Id 或生成）；可选从可信判定点解析 community；可选记录服务器指标
-// obs_http_server_requests_total / obs_http_server_request_duration_seconds。
+// http_server_requests_total / http_server_request_duration_seconds（不加前缀 ——
+// 同一条 series 已带 service label，见 spec/metrics-format.md）。
 
 const { randomUUID } = require('crypto');
 const context = require('./context');

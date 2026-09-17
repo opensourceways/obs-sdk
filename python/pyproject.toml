@@ -21,6 +21,12 @@ test = [
     "pytest>=8.0",
     # starlette.testclient（FastAPI 中间件单测）的传输依赖；不装则 testclient 抛 RuntimeError
     "httpx2>=2.0.0",
+    # 三个框架必须一起装：中间件单测用 pytest.importorskip 跳过缺失的框架，
+    # 不装就会「静默跳过」——本地看着全绿，实际中间件零覆盖。CI 里也是单独装它们，
+    # 这里补上后 `pip install -e ".[test]"` 一条命令就能跑全套。
+    "fastapi>=0.100",
+    "flask>=2.0",
+    "django>=4.0",
 ]
 
 [tool.setuptools.packages.find]
