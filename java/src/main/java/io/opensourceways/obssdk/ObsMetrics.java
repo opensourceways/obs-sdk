@@ -25,7 +25,8 @@ import java.util.concurrent.atomic.AtomicReference;
  *   <li>service/env/instance 三个部署级字段注册为 <b>common tags</b>（const label）；</li>
  *   <li><b>community 建模为普通可变 label</b>：值取请求上下文覆盖（可信判定点显式写入），
  *       无覆盖时回退部署默认 —— 「注册一次两用」，单社区/多社区共用同一注册点。</li>
- *   <li>{@code namespace} 可选：给指标名加前缀（跨服务共享 SDK 时用）。</li>
+ *   <li>{@code namespace} 可选：给指标名加前缀（如用 {@code service} 拼业务指标的
+ *       {@code <service>_} 前缀）；SDK 不为中间件公共指标定义前缀，别用它补前缀。</li>
  * </ul>
  *
  * <p>注意：本 SDK 不重复造 HTTP 服务端指标 —— Java 服务通常走 Spring Boot Actuator +

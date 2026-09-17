@@ -112,8 +112,8 @@ def test_http_server_handle_registered_once():
     server.observe_request(method="GET", path="/items/{item_id}",
                            status_code=200, seconds=0.01)
     text = m.text().decode()
-    assert "obs_http_server_requests_total" in text
-    assert "obs_http_server_request_duration_seconds_bucket" in text
+    assert "http_server_requests_total" in text
+    assert "http_server_request_duration_seconds_bucket" in text
     # 路由模板原样落成 label —— 中间件传什么就是什么。
     assert 'path="/items/{item_id}"' in text
     # 桶边界显式固定，含 prometheus_client 默认没有的 .005 / 10，且不含其默认多出的 .075。

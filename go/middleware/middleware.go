@@ -4,7 +4,8 @@
 //   - 为请求注入 request_id（无则生成）；有可信入站头（X-Request-Id）则沿用；
 //   - 可选从可信来源解析 community 写入 context（由解析函数提供，SDK 不裸透传）；
 //   - 若配置绑定了 *metrics.Metrics，则记录 HTTP 服务器指标
-//     obs_http_server_requests_total / obs_http_server_request_duration_seconds。
+//     http_server_requests_total / http_server_request_duration_seconds（不加前缀，
+//     同一条 series 已带 service label，见 spec/metrics-format.md）。
 //
 // 用法（net/http）：
 //
@@ -55,7 +56,7 @@ type Middleware struct {
 func New(opts Options) *Middleware {
 	md := &Middleware{opts: opts}
 	if m := opts.Metrics; m != nil {
-		// 服务器公共指标用 obs_ 前缀（spec：不以 service 名开头，按 label 过滤）。
+		// 服务器公共指标不加任何前缀（spec：同一条 series 已带 service label，按 label 过滤）。
 		md.reqTotal = m.NewCounterVec("http_server_requests_total", "HTTP requests handled",
 			"method", "path", "status_code")
 		md.reqDuration = m.NewHistogramVec("http_server_request_duration_seconds",

@@ -5,8 +5,8 @@
 community_resolver；SDK 不裸透传外部入参。
 
 服务端指标（spec/metrics-format.md「默认暴露的中间件指标」）：三个适配器都会记
-`obs_http_server_requests_total` / `obs_http_server_request_duration_seconds`，
-与 Go / Node 中间件语义一致。**path label 取路由模板**（如 `/items/{item_id}`），
+`http_server_requests_total` / `http_server_request_duration_seconds`，
+与 Go / Node 中间件**同名同 label**。**path label 取路由模板**（如 `/items/{item_id}`），
 不是原始 URL —— 原始路径带 ID 会撑爆时序基数；拿不到模板时记为 `unmatched`。
 不需要 SDK 记这两个指标时传 `collect_server_metrics=False`（服务自己已有
 等价 instrumentation 的情况）。

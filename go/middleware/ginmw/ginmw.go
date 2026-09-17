@@ -1,7 +1,8 @@
 // Package ginmw 提供 gin 框架的观测中间件（obs-sdk-go）。
 //
 // 与 net/http 的 middleware 职责一致（注入 request_id / community、可选记录
-// obs_http_server_* 服务器指标），只是适配 gin.HandlerFunc。gin 用户按此接入：
+// http_server_* 服务器指标 —— 不加前缀，见 spec/metrics-format.md），
+// 只是适配 gin.HandlerFunc。gin 用户按此接入：
 //
 //	import "github.com/opensourceways/obs-sdk/go/middleware/ginmw"
 //

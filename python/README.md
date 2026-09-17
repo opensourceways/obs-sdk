@@ -73,8 +73,8 @@ MIDDLEWARE = [..., "obs_sdk.middleware.DjangoMiddleware"]
 
 | 指标 | label |
 | --- | --- |
-| `obs_http_server_requests_total` | `method` `path` `status_code` |
-| `obs_http_server_request_duration_seconds` | 同上（直方图，桶边界与 Go / Node 对齐） |
+| `http_server_requests_total` | `method` `path` `status_code` |
+| `http_server_request_duration_seconds` | 同上（直方图，桶边界与 Go / Node 对齐） |
 
 `path` 取**路由模板**（`/items/{item_id}`），不是原始 URL —— 原始路径带 ID 会撑爆时序基数；
 404 / 未匹配归到 `unmatched`。`service/env/instance/community` 由 SDK 自动补齐。

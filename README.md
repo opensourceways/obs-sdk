@@ -23,7 +23,7 @@ Go 模块的 tag 必须是 `<子目录>/v<版本>` 形式（如 `go/v1.0.0`）�
 | community 双层注入 | `service/env/instance` 部署级 const；`community` 可变 label/字段：请求级可信判定点覆盖，未覆盖回退部署默认（`OBS_*` 环境变量） |
 | 请求上下文 | Go `sdkctx`(context.Context)、Python `contextvars`、Node `AsyncLocalStorage`、Java `RequestContext`(ThreadLocal) |
 | trace_id 预留 | 字段可写可透传，首期不落 span |
-| 服务端指标 | Go/Python/Node 由 SDK 中间件埋 `obs_http_server_*`；Java 走 Actuator + Micrometer 官方 server instrumentation（不重复埋点） |
+| 服务端指标 | Go/Python/Node 由 SDK 中间件埋 `http_server_*`；Java 走 Actuator + Micrometer 官方 server instrumentation（不重复埋点） |
 
 ## 验证
 

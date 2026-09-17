@@ -8,7 +8,7 @@ opensourceways 微服务可观测薄封装 SDK 的 Go 实现，契约见 [spec/]
   - `error` 值统一序列化为 `err.Error()` 文本（`encoding/json` 会把多数错误渲染成 `{}`）
 - **指标**：`metrics` package —— `client_golang` 薄封装（counter/gauge/histogram），label 规范见 spec/metrics-format.md
 - **请求上下文**：`sdkctx` —— `context.Context` 承载 `community/request_id/trace_id/span_id`
-- **中间件**：`middleware`（net/http）+ `middleware/ginmw`（gin）—— 注入 request_id、可信判定点解析 community、记 `obs_http_server_*` 指标
+- **中间件**：`middleware`（net/http）+ `middleware/ginmw`（gin）—— 注入 request_id、可信判定点解析 community、记 `http_server_*` 指标
 - **community 双层注入**：`service/env/instance` 部署级 const label；`community` 普通可变 label —— 请求上下文覆盖，未覆盖回退部署默认（`OBS_*` 环境变量）
 
 ## 目录

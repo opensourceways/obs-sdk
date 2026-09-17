@@ -84,7 +84,7 @@ built := m.NewCounterVec("built_releases", "发布的构建数", "kind")
 built.Inc("tag")
 built.IncWithContext(ctx, "tag") // 请求内 → 该条 series 的 community 取 ctx 覆盖值
 
-// 中间件：注入 request_id + 可信判定点解析 community + 记 obs_http_server_*
+// 中间件：注入 request_id + 可信判定点解析 community + 记 http_server_*
 h := obshttpmw.New(obshttpmw.Options{
     Metrics:          m,
     ResolveCommunity: func(r *http.Request) string { /* "/mindspore" → "mindspore" */ return "" },
@@ -137,7 +137,7 @@ const m = new obs.metrics.Metrics({ service: 'review', env: 'test', instance: 'p
 const built = m.counter('built_releases_total', '发布的构建数', ['kind']);  // prom-client 要最终名，SDK 不改名
 built.inc(1, { kind: 'tag' });
 
-// 中间件：注入 request_id + 解析 community + 记 obs_http_server_*
+// 中间件：注入 request_id + 解析 community + 记 http_server_*
 const { makeMiddleware, metricsRouteHandler } = obs.middleware;
 app.use(makeMiddleware({ metrics: m, resolveCommunity: (req) => undefined }));
 app.get('/metrics', metricsRouteHandler(m));

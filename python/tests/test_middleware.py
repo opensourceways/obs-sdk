@@ -2,7 +2,7 @@
 
 覆盖两件事：
   1. 入口 bind community / request_id，请求内日志可见；
-  2. 记 HTTP 服务端指标 obs_http_server_*（spec/metrics-format.md），
+  2. 记 HTTP 服务端指标 http_server_*（spec/metrics-format.md），
      且 path label 取**路由模板**而不是原始 URL —— 原始路径带 ID 会撑爆时序基数。
 """
 
@@ -97,7 +97,7 @@ def test_fastapi_records_server_metrics_with_route_template():
     assert client.get("/items/12345").status_code == 200
     assert client.get("/nope").status_code == 404
 
-    rows = _rows(m, "obs_http_server_requests_total")
+    rows = _rows(m, "http_server_requests_total")
     by_path = {r.split('path="')[1].split('"')[0]: r for r in rows}
     # 动态段归一为路由模板；未匹配（404）归到 unmatched，都不进原始路径。
     assert "/items/{item_id}" in by_path, rows
@@ -113,7 +113,7 @@ def test_fastapi_records_server_metrics_with_route_template():
 
     # 时延直方图同 label 维度，且桶边界与 Go/Node 对齐（钉住 .005 / 10）。
     text = m.text().decode()
-    assert "obs_http_server_request_duration_seconds_bucket" in text
+    assert "http_server_request_duration_seconds_bucket" in text
     assert 'le="0.005"' in text, text
     assert 'le="10.0"' in text, text
     # prometheus_client 自带默认里多出来的桶不应出现（否则与另两个语言对不上）。
@@ -138,7 +138,7 @@ def test_fastapi_records_500_when_view_raises():
     client = TestClient(app, raise_server_exceptions=False)
     assert client.get("/boom").status_code == 500
 
-    rows = _rows(m, "obs_http_server_requests_total")
+    rows = _rows(m, "http_server_requests_total")
     assert rows, "视图抛异常也必须记一次，否则漏计"
     assert 'status_code="500"' in rows[0]
     assert 'path="/boom"' in rows[0]
@@ -188,7 +188,7 @@ def test_flask_records_server_metrics_with_route_template():
         assert c.get("/items/12345").status_code == 200
         assert c.get("/nope").status_code == 404
 
-    rows = _rows(m, "obs_http_server_requests_total")
+    rows = _rows(m, "http_server_requests_total")
     by_path = {r.split('path="')[1].split('"')[0]: r for r in rows}
     assert "/items/<int:item_id>" in by_path, rows
     assert "unmatched" in by_path, rows
@@ -258,7 +258,7 @@ def test_django_records_server_metrics_with_route_template():
     assert client.get("/nope").status_code == 404
 
     m = obs_metrics.default()  # DjangoMiddleware 由框架实例化，用的是单例
-    rows = _rows(m, "obs_http_server_requests_total")
+    rows = _rows(m, "http_server_requests_total")
     by_path = {r.split('path="')[1].split('"')[0]: r for r in rows}
     assert "items/<int:pk>" in by_path, rows
     assert "unmatched" in by_path, rows

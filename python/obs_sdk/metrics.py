@@ -131,10 +131,10 @@ class Metrics:
 
 
 # 中间件公共指标名（spec/metrics-format.md「默认暴露的中间件指标」）：
-# 共享 SDK 中间件统一用 SDK 保留前缀 obs_，不以 service 名开头
-# —— 同一条 series 已带 service label，查询按 label 过滤。
-SERVER_REQUESTS_TOTAL = "obs_http_server_requests_total"
-SERVER_REQUEST_DURATION_SECONDS = "obs_http_server_request_duration_seconds"
+# 不加任何前缀 —— 同一条 series 已带 service label，查询按 label 过滤，名字里再编
+# 前缀是重复信息，且会让跨服务的统一查询失效。Go / Node 用同一套名字。
+SERVER_REQUESTS_TOTAL = "http_server_requests_total"
+SERVER_REQUEST_DURATION_SECONDS = "http_server_request_duration_seconds"
 
 # 显式钉住桶边界：与 Go（client_golang 默认）/ Node（DEFAULT_METRIC_BUCKETS）对齐。
 # prometheus_client 自带默认多了 .075/.75/7.5 三个点，不钉就会与另两个语言不一致。
@@ -144,9 +144,9 @@ SERVER_DURATION_BUCKETS = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 
 class _HttpServer:
     """HTTP 服务端公共指标：请求计数 + 时延（秒）。
 
-    label 除四个公共维度外为 method / path / status_code。**path 必须传路由模板
-    （如 `/items/{item_id}`）而不是原始 URL** —— 原始路径带 ID 会撑爆时序基数
-    （spec/metrics-format.md 明示）。拿不到模板时由调用方传 "unmatched"。
+    label 除四个公共维度外为 method / path / status_code（counter 与 histogram 都带，
+    spec 明示：要支持「按状态码看时延」）。**path 必须传路由模板（如 `/items/{item_id}`）
+    而不是原始 URL** —— 原始路径带 ID 会撑爆时序基数。拿不到模板时由调用方传 "unmatched"。
     """
 
     def __init__(self, m: "Metrics") -> None:
