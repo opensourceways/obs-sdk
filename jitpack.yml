@@ -1,4 +1,4 @@
 jdk:
   - openjdk17
 install:
-  - mvn -B -f java/pom.xml install -DskipTests
+  - mvn -B -f java/pom.xml install -DskipTests -Dmaven.compiler.source=17 -Dmaven.compiler.target=17
