@@ -1,18 +1,26 @@
 package io.opensourceways.obssdk;
 
+import io.opensourceways.obssdk.internal.Env;
+
 /**
  * SDK 静态配置（部署级默认字段）。
  *
  * <p>与 spec/common-fields.md 对齐：统一从环境变量读取默认值
  * {@code OBS_SERVICE / OBS_ENV / OBS_INSTANCE / OBS_COMMUNITY}，
  * 语义与 Go/Python/Node SDK 的 Config 一致。
+ *
+ * <p><b>三级解析</b>（同 Go 侧 {@code internal/env}）：显式参数 &gt; {@code OBS_*}
+ * 环境变量 &gt; 内置默认。内置默认为契约规定值：{@code service} / {@code env} /
+ * {@code community} = {@code "unknown"}，{@code instance} = hostname（k8s 下即 pod 名）。
+ * 因此<b>四个字段取值恒非 null、恒非空</b>——不设兜底时它们会整条从日志 JSON 里消失
+ * （provider 对空值省略该键），也进不了指标 label 集。
  */
 public final class ObsSdkConfig {
 
-    public static final String ENV_SERVICE = "OBS_SERVICE";
-    public static final String ENV_ENV = "OBS_ENV";
-    public static final String ENV_INSTANCE = "OBS_INSTANCE";
-    public static final String ENV_COMMUNITY = "OBS_COMMUNITY";
+    public static final String ENV_SERVICE = Env.ENV_SERVICE;
+    public static final String ENV_ENV = Env.ENV_ENV;
+    public static final String ENV_INSTANCE = Env.ENV_INSTANCE;
+    public static final String ENV_COMMUNITY = Env.ENV_COMMUNITY;
 
     private final String service;
     private final String envName;
@@ -21,40 +29,43 @@ public final class ObsSdkConfig {
     private final String namespace;
 
     private ObsSdkConfig(Builder b) {
-        this.service = b.service;
-        this.envName = b.envName;
-        this.instance = b.instance;
-        this.community = b.community;
+        // 构造时即完成三级解析：调用方显式设置 > OBS_* 环境变量 > 内置默认。
+        this.service = Env.service(b.service);
+        this.envName = Env.env(b.envName);
+        this.instance = Env.instance(b.instance);
+        this.community = Env.community(b.community);
         this.namespace = b.namespace;
     }
 
-    /** 按规范优先级读取环境变量；调用方显式设置的值优先。 */
+    /** 构建配置；四个部署级字段的取值在 {@link Builder#build()} 时完成解析。 */
     public static Builder builder() {
         return new Builder();
     }
 
-    /** 只从环境变量构造（测试外入口）。 */
+    /**
+     * 全部取环境变量/内置默认（测试外入口，等价于 {@code builder().build()}）。
+     * 未设置 {@code OBS_*} 的字段回退到契约默认，不会为空。
+     */
     public static ObsSdkConfig fromEnvironment() {
-        return builder()
-                .service(System.getenv(ENV_SERVICE))
-                .env(System.getenv(ENV_ENV))
-                .instance(System.getenv(ENV_INSTANCE))
-                .community(System.getenv(ENV_COMMUNITY))
-                .build();
+        return builder().build();
     }
 
+    /** 服务名（恒非空，未配置时为 "unknown"）。 */
     public String service() {
         return service;
     }
 
+    /** 部署环境（恒非空，未配置时为 "unknown"）。 */
     public String envName() {
         return envName;
     }
 
+    /** 实例标识（恒非空，未配置时取 hostname）。 */
     public String instance() {
         return instance;
     }
 
+    /** 部署级默认社区（恒非空，未配置时为 "unknown"）。 */
     public String community() {
         return community;
     }

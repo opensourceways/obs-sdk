@@ -2,6 +2,7 @@ package io.opensourceways.obssdk;
 
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.classic.joran.JoranConfigurator;
+import io.opensourceways.obssdk.context.RequestContext;
 import io.opensourceways.obssdk.log.ObsLogging;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -154,6 +155,48 @@ class ObsJsonProviderTest {
         // 二期预留位：未写入 MDC 时不出现在输出里。
         assertFalse(json.contains("trace_id"), json);
         assertFalse(json.contains("span_id"), json);
+    }
+
+    /**
+     * 回归：未显式配置且无 {@code OBS_*} 环境变量时，四个部署级字段仍须出现在输出里。
+     *
+     * <p>此前 {@code fromEnvironment()} 无兜底 → 取值 null → provider 省略空值 → 这四个键
+     * 整条从 JSON 里消失（而不是显示 unknown），采集侧按字段建索引会静默漏数。
+     */
+    @Test
+    void 未显式配置时四个部署级字段仍出现且非空() {
+        ObsLogging.init(ObsSdkConfig.builder().build());
+
+        LoggerFactory.getLogger("com.x.ReviewSvc").info("job done");
+        String json = lastLine();
+
+        for (String key : new String[]{"service", "env", "instance", "community"}) {
+            String value = fieldValue(json, key); // 字段缺席直接断言失败
+            assertFalse(value.isEmpty(), key + " 是空值： " + json);
+        }
+    }
+
+    /**
+     * 回归：请求结束（{@code clearRequestScope}）后，请求之外的日志不应带上
+     * 上一个请求的 community 覆盖值。
+     *
+     * <p>MDC 是线程本地的，web 容器线程复用；残留的覆盖值会静默污染定时任务 /
+     * 异步回调打出的日志，使按 community 的聚合与告警失真。这条断言落在真实 JSON
+     * 输出上，而不是 MDC 中间变量。
+     */
+    @Test
+    void 请求结束后再打日志_community为部署默认而非上次请求的覆盖值() {
+        try (RequestContext.Scope scope = RequestContext.push("mindspore", "req-1", "trace-1")) {
+            ObsLogging.enrich(RequestContext.current().orElse(null));
+        } finally {
+            ObsLogging.clearRequestScope();
+        }
+
+        LoggerFactory.getLogger("com.x.ReviewSvc").info("cron tick");
+        String json = lastLine();
+
+        assertTrue(json.contains("\"community\":\"openEuler\""), json);
+        assertFalse(json.contains("mindspore"), "上一个请求的 community 串染了：" + json);
     }
 
     @Test

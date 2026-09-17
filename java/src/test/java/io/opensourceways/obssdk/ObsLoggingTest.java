@@ -63,4 +63,23 @@ class ObsLoggingTest {
             assertNull(MDC.get(ObsLogging.MDC_SPAN_ID));
         }
     }
+
+    /**
+     * 回归：{@code clearRequestScope} 曾漏清 community。
+     *
+     * <p>MDC 是线程本地的，web 容器线程复用 —— 留着上一个请求的覆盖值会串给同一线程
+     * 后续打出的日志（定时任务 / 异步回调），且不报错。注意既要复位成部署默认，
+     * 也不能删掉（删了字段会整个从 JSON 里消失）。
+     */
+    @Test
+    void clearRequestScope把community复位为部署默认() {
+        try (RequestContext.Scope s = RequestContext.push("mindspore", "req-1", "trace-1")) {
+            ObsLogging.enrich(RequestContext.current().orElse(null));
+            assertEquals("mindspore", MDC.get(ObsLogging.MDC_COMMUNITY));
+
+            ObsLogging.clearRequestScope();
+            assertEquals("openeuler", MDC.get(ObsLogging.MDC_COMMUNITY),
+                    "应复位为部署默认，而不是残留上一个请求的覆盖值");
+        }
+    }
 }
