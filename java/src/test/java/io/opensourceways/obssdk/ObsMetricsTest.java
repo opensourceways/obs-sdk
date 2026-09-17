@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ObsMetricsTest {
@@ -100,6 +101,27 @@ class ObsMetricsTest {
         ObsMetrics m = ObsMetrics.of(cfg("service", "s", "community", "openeuler", "namespace", "obs"));
         m.counter("events", "事件数").inc(1);
         assertTrue(m.text().contains("obs_events_total"), m.text());
+    }
+
+    /**
+     * 回归：四个部署级字段在未显式配置时也必须出现在 label 集里。
+     *
+     * <p>此前 {@code fromEnvironment()} 无兜底，取值可能为 null；{@code community} 为 null 时
+     * {@code Tag.of} 直接 NPE，{@code service/env/instance} 为 null 时 commonTags 被整段跳过 ——
+     * 同一份大盘查询，Java 服务比 Go 服务少几个 label，按 label 过滤时静默漏掉这些服务。
+     */
+    @Test
+    void 未显式配置时四个部署级label仍非空() {
+        ObsMetrics m = ObsMetrics.of(ObsSdkConfig.builder().build());
+        m.counter("events", "事件数").inc(1);
+
+        List<String> ev = samples(m.text(), "events_total");
+        assertEquals(1, ev.size());
+        String line = ev.get(0);
+        for (String label : new String[]{"service", "env", "instance", "community"}) {
+            assertTrue(line.contains(label + "=\""), "缺少 label " + label + "： " + line);
+            assertFalse(line.contains(label + "=\"\""), label + " 值为空： " + line);
+        }
     }
 
     @Test

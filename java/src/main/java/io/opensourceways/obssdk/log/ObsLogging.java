@@ -2,6 +2,7 @@ package io.opensourceways.obssdk.log;
 
 import io.opensourceways.obssdk.ObsSdkConfig;
 import io.opensourceways.obssdk.context.RequestContext;
+import io.opensourceways.obssdk.internal.Env;
 import org.slf4j.MDC;
 
 import java.util.Optional;
@@ -62,8 +63,7 @@ public final class ObsLogging {
                 ? Optional.of(request.spanId())
                 : Optional.empty();
 
-        String base = cfg != null ? cfg.community() : null;
-        MDC.put(MDC_COMMUNITY, community.orElse(base != null ? base : ""));
+        MDC.put(MDC_COMMUNITY, community.orElse(deploymentCommunity()));
         if (requestId.isPresent()) {
             MDC.put(MDC_REQUEST_ID, requestId.get());
         }
@@ -75,11 +75,25 @@ public final class ObsLogging {
         }
     }
 
-    /** 请求结束时清理请求级字段，避免线程复用串染（MDC 由框架在线程回收时兜底）。 */
+    /**
+     * 请求结束时清理请求级字段，避免线程复用串染（MDC 由框架在线程回收时兜底）。
+     *
+     * <p>{@code community} 必须**复位为部署级默认**而不是删掉或留着：MDC 是线程本地的，
+     * 而 web 容器的请求线程是复用的 —— 删掉会连部署默认一起丢（字段整个消失），
+     * 留着则会把上一个请求的覆盖值（如 mindspore）串给下一个请求之外打出的日志
+     * （定时任务 / 异步回调），且不报错，属于静默污染：按 community 的聚合与告警会失真。
+     */
     public static void clearRequestScope() {
         MDC.remove(MDC_REQUEST_ID);
         MDC.remove(MDC_TRACE_ID);
         MDC.remove(MDC_SPAN_ID);
+        MDC.put(MDC_COMMUNITY, deploymentCommunity());
+    }
+
+    /** 部署级默认 community；{@code init} 未调用时退到契约默认（见 internal/Env）。 */
+    private static String deploymentCommunity() {
+        ObsSdkConfig current = cfg;
+        return current != null && current.community() != null ? current.community() : Env.DEFAULT_VALUE;
     }
 
     private static String nvl(String v) {

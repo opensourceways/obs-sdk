@@ -48,19 +48,13 @@ public final class ObsMetrics {
         this.defaultCommunity = cfg.community();
         this.namespace = cfg.namespace();
 
-        List<Tag> common = new ArrayList<>();
-        if (service != null) {
-            common.add(Tag.of("service", service));
-        }
-        if (envName != null) {
-            common.add(Tag.of("env", envName));
-        }
-        if (instance != null) {
-            common.add(Tag.of("instance", instance));
-        }
-        if (!common.isEmpty()) {
-            registry.config().commonTags(Tags.of(common));
-        }
+        // service/env/instance 恒为 const label，取值恒非空（ObsSdkConfig 已做三级兜底，
+        // 见 internal/Env），故无条件注册。条件注册会让未配置的字段整个缺席，
+        // 与 Go/Python/Node 输出的 label 集不一致 —— 大盘按 label 过滤时会漏掉这些服务。
+        registry.config().commonTags(Tags.of(
+                Tag.of("service", service),
+                Tag.of("env", envName),
+                Tag.of("instance", instance)));
     }
 
     public static ObsMetrics of(ObsSdkConfig cfg) {
@@ -125,10 +119,8 @@ public final class ObsMetrics {
             throw new IllegalArgumentException("label 数量不匹配: names=" + labelNames.length + " values=" + values.length);
         }
         List<Tag> tags = new ArrayList<>(labelNames.length + 1);
-        String community = communityValue(defaultCommunity);
-        if (community != null) {
-            tags.add(Tag.of("community", community));
-        }
+        // community 恒非空（覆盖值或部署默认，见 ObsSdkConfig 兜底），恒排首位。
+        tags.add(Tag.of("community", communityValue(defaultCommunity)));
         for (int i = 0; i < labelNames.length; i++) {
             tags.add(Tag.of(labelNames[i], values[i] == null ? "" : values[i]));
         }
@@ -183,10 +175,8 @@ public final class ObsMetrics {
             String community = communityValue(ObsMetrics.this.defaultCommunity);
             List<Tag> tags = new ArrayList<>(labelNames.length + 1);
             List<String> keyParts = new ArrayList<>(labelNames.length + 1);
-            keyParts.add(community == null ? "" : community);
-            if (community != null) {
-                tags.add(Tag.of("community", community));
-            }
+            keyParts.add(community);
+            tags.add(Tag.of("community", community));
             for (int i = 0; i < labelNames.length; i++) {
                 String v = labelValues[i] == null ? "" : labelValues[i];
                 tags.add(Tag.of(labelNames[i], v));
