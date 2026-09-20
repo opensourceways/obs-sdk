@@ -221,6 +221,49 @@ class ObsJsonProviderTest {
         assertFalse(lastLine().contains("\"error\""), lastLine());
     }
 
+    /**
+     * 缺陷回归：部署级字段曾只写入 {@code init()} 所在线程的 MDC，web 容器请求线程
+     * 拿不到 service/env/instance，导致整条字段消失。修复后部署级字段来自全局配置，
+     * 请求线程即使只写请求级 MDC 也完整输出。
+     */
+    @Test
+    void 请求线程模拟_部署级字段来自全局配置而非线程MDC() throws Exception {
+        Thread request = new Thread(() -> {
+            MDC.put(ObsLogging.MDC_COMMUNITY, "mindspore");
+            MDC.put(ObsLogging.MDC_REQUEST_ID, "req-9");
+            LoggerFactory.getLogger("com.x.ReviewSvc").info("job done");
+        });
+        request.start();
+        request.join();
+
+        String json = lastLine();
+        assertTrue(json.contains("\"service\":\"review\""), json);
+        assertTrue(json.contains("\"env\":\"test\""), json);
+        assertTrue(json.contains("\"instance\":\"pod-1\""), json);
+        // community 保持「MDC 请求级覆盖 > 部署默认」语义
+        assertTrue(json.contains("\"community\":\"mindspore\""), json);
+        assertTrue(json.contains("\"request_id\":\"req-9\""), json);
+    }
+
+    /**
+     * 异步/定时线程不打请求级 MDC 时，部署级字段（含 community）也必须输出部署默认，
+     * 而不是整条从 JSON 里消失（契约要求四个部署级字段恒非空）。
+     */
+    @Test
+    void 新线程无请求级MDC时_部署级字段回退部署默认() throws Exception {
+        Thread async = new Thread(() ->
+                LoggerFactory.getLogger("com.x.ReviewSvc").info("cron tick"));
+        async.start();
+        async.join();
+
+        String json = lastLine();
+        assertTrue(json.contains("\"service\":\"review\""), json);
+        assertTrue(json.contains("\"env\":\"test\""), json);
+        assertTrue(json.contains("\"instance\":\"pod-1\""), json);
+        assertTrue(json.contains("\"community\":\"openEuler\""), json);
+        assertFalse(json.contains("request_id"), json);
+    }
+
     private String line(int index) {
         String[] lines = captured.toString(StandardCharsets.UTF_8).split("\n");
         assertTrue(lines.length > index, "日志行数不足：" + captured);

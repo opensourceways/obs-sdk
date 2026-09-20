@@ -8,7 +8,7 @@ import org.slf4j.MDC;
 import java.util.Optional;
 
 /**
- * 日志结构化装配：把部署级默认字段 + 请求级覆盖字段写入 SLF4J MDC，
+ * 日志结构化装配：持有全局部署级配置，并把请求级覆盖字段写入 SLF4J MDC，
  * 由接入服务的 logback JSON encoder（logstash-logback-encoder，见
  * {@code examples/logback-json.xml}）输出为单行 JSON。
  *
@@ -16,9 +16,11 @@ import java.util.Optional;
  * （与 spec/common-fields.md、spec/log-format.md 对齐）；{@code trace_id} / {@code span_id}
  * 为二期 trace 预留位，首期恒空、不写入 MDC。
  *
- * <p>community 双层注入与其它语言 SDK 一致：部署级默认来自 {@code OBS_*}/Config，
- * 请求级由中间件在可信判定点解析后经 {@link RequestContext#push} 写入，
- * 本助手在取数时用请求级覆盖默认（同 metrics 的 resolve 语义）。
+ * <p>部署级字段（{@code service / env / instance / community} 默认值）本质是全局静态配置
+ * （来源 {@code OBS_*} / Config），<b>不随请求线程变化</b>，因此不走线程本地 MDC ——
+ * {@link ObsJsonProvider} 直接从本类的全局静态访问器取数。MDC 只承载请求级字段：
+ * {@code community} 请求覆盖（可信判定点解析后经 {@link RequestContext#push} 写入）
+ * 优先于部署默认，{@code request_id} 由中间件注入。
  */
 public final class ObsLogging {
 
@@ -38,10 +40,6 @@ public final class ObsLogging {
     /** 全局初始化一次：登记部署级默认字段（通常服务启动时调用）。 */
     public static void init(ObsSdkConfig config) {
         cfg = config;
-        MDC.put(MDC_SERVICE, nvl(config.service()));
-        MDC.put(MDC_ENV, nvl(config.envName()));
-        MDC.put(MDC_INSTANCE, nvl(config.instance()));
-        MDC.put(MDC_COMMUNITY, nvl(config.community()));
     }
 
     /**
@@ -90,13 +88,27 @@ public final class ObsLogging {
         MDC.put(MDC_COMMUNITY, deploymentCommunity());
     }
 
-    /** 部署级默认 community；{@code init} 未调用时退到契约默认（见 internal/Env）。 */
-    private static String deploymentCommunity() {
+    /** 部署级 service；{@code init} 未调用时回退契约默认（见 internal/Env）。 */
+    public static String deploymentService() {
         ObsSdkConfig current = cfg;
-        return current != null && current.community() != null ? current.community() : Env.DEFAULT_VALUE;
+        return current != null && current.service() != null ? current.service() : Env.DEFAULT_VALUE;
     }
 
-    private static String nvl(String v) {
-        return v == null ? "" : v;
+    /** 部署级 env；{@code init} 未调用时回退契约默认（见 internal/Env）。 */
+    public static String deploymentEnv() {
+        ObsSdkConfig current = cfg;
+        return current != null && current.envName() != null ? current.envName() : Env.DEFAULT_VALUE;
+    }
+
+    /** 部署级 instance；{@code init} 未调用时回退契约默认（见 internal/Env）。 */
+    public static String deploymentInstance() {
+        ObsSdkConfig current = cfg;
+        return current != null && current.instance() != null ? current.instance() : Env.DEFAULT_VALUE;
+    }
+
+    /** 部署级默认 community；{@code init} 未调用时回退契约默认（见 internal/Env）。 */
+    public static String deploymentCommunity() {
+        ObsSdkConfig current = cfg;
+        return current != null && current.community() != null ? current.community() : Env.DEFAULT_VALUE;
     }
 }

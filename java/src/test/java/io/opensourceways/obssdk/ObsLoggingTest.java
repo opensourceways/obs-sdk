@@ -82,4 +82,29 @@ class ObsLoggingTest {
                     "应复位为部署默认，而不是残留上一个请求的覆盖值");
         }
     }
+
+    @Test
+    void 部署级静态访问器返回init登记的值() {
+        assertEquals("review", ObsLogging.deploymentService());
+        assertEquals("test", ObsLogging.deploymentEnv());
+        assertEquals("pod-1", ObsLogging.deploymentInstance());
+        assertEquals("openeuler", ObsLogging.deploymentCommunity());
+    }
+
+    /**
+     * 缺陷回归：部署级字段一旦只存在于线程本地 MDC 就会随线程消失；访问器是全局静态
+     * 取值，{@code init} 未调用时仍须回退契约默认（"unknown"），保证 provider 恒能
+     * 输出非空部署级字段。
+     */
+    @Test
+    void 未init时部署级访问器回退契约默认() throws Exception {
+        java.lang.reflect.Field cfgField = ObsLogging.class.getDeclaredField("cfg");
+        cfgField.setAccessible(true);
+        cfgField.set(null, null);
+
+        assertEquals("unknown", ObsLogging.deploymentService());
+        assertEquals("unknown", ObsLogging.deploymentEnv());
+        assertEquals("unknown", ObsLogging.deploymentInstance());
+        assertEquals("unknown", ObsLogging.deploymentCommunity());
+    }
 }

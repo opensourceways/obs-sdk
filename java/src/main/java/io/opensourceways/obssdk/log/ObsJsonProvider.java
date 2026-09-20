@@ -31,9 +31,11 @@ import java.util.Map;
  *
  * <p>字段顺序：{@code time / level / msg / service / env / instance / community /
  * request_id / trace_id / span_id / logger / error}。其中
- * {@code service / env / instance / community} 来自 {@link ObsLogging#init} 写入的 MDC，
- * 其余请求级字段由中间件经 {@link ObsLogging#enrich} 写入，空值一律省略
- * （{@code trace_id} / {@code span_id} 为二期预留，首期通常不出现）。
+ * {@code service / env / instance / community} 是<b>部署级字段</b>，来自全局配置
+ * （{@link ObsLogging} 静态访问器，不依赖线程本地 MDC），恒非空；{@code community}
+ * 在请求线程上取 MDC 请求级覆盖，未覆盖回退部署默认。其余请求级字段
+ * （{@code request_id / trace_id / span_id}）由中间件经 {@link ObsLogging#enrich}
+ * 写入 MDC，空值一律省略（{@code trace_id} / {@code span_id} 为二期预留，首期通常不出现）。
  *
  * <p>业务字段不属于本 provider 的职责：接入方可在本 provider 之后追加
  * {@code <keyValuePairs/>} 或 {@code <mdc/>} 等 provider，输出会落在固定字段之后。
@@ -44,12 +46,11 @@ public class ObsJsonProvider extends AbstractJsonProvider<ILoggingEvent> {
     private static final DateTimeFormatter TIME_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSXXX").withZone(ZoneOffset.UTC);
 
-    /** MDC 中属于固定契约的键，按契约顺序输出；空值省略。 */
-    private static final String[] MDC_CONTRACT_KEYS = {
-            ObsLogging.MDC_SERVICE,
-            ObsLogging.MDC_ENV,
-            ObsLogging.MDC_INSTANCE,
-            ObsLogging.MDC_COMMUNITY,
+    /**
+     * MDC 中属于契约的<b>请求级</b>键，按契约顺序输出；空值省略。
+     * 部署级字段（service/env/instance/community 默认）不走 MDC，见 {@link ObsLogging}。
+     */
+    private static final String[] MDC_REQUEST_KEYS = {
             ObsLogging.MDC_REQUEST_ID,
             ObsLogging.MDC_TRACE_ID,
             ObsLogging.MDC_SPAN_ID,
@@ -61,8 +62,19 @@ public class ObsJsonProvider extends AbstractJsonProvider<ILoggingEvent> {
         generator.writeStringField("level", levelName(event.getLevel()));
         generator.writeStringField("msg", event.getFormattedMessage());
 
+        // 部署级字段来自全局静态配置，不随请求线程变化：直接取 ObsLogging 访问器，
+        // 避免 web 容器工作线程的 MDC 缺失导致整条字段消失。
+        generator.writeStringField("service", ObsLogging.deploymentService());
+        generator.writeStringField("env", ObsLogging.deploymentEnv());
+        generator.writeStringField("instance", ObsLogging.deploymentInstance());
+
         Map<String, String> mdc = event.getMDCPropertyMap();
-        for (String key : MDC_CONTRACT_KEYS) {
+        // community：请求级覆盖（中间件写 MDC）优先，未覆盖回退部署默认，恒非空。
+        String community = mdc == null ? null : mdc.get(ObsLogging.MDC_COMMUNITY);
+        generator.writeStringField("community",
+                community != null && !community.isEmpty() ? community : ObsLogging.deploymentCommunity());
+
+        for (String key : MDC_REQUEST_KEYS) {
             String value = mdc == null ? null : mdc.get(key);
             if (value != null && !value.isEmpty()) {
                 generator.writeStringField(key, value);
