@@ -1,6 +1,8 @@
 # 指标格式契约 — 命名与 label 规范
 
-> 采集链路：服务暴露 `/metrics`（Prometheus text 格式）→ AOM 2.0 Prometheus 实例（ServiceMonitor 抓取）→ 大盘/告警。格式统一是跨服务聚合的前提。
+> 采集链路：服务暴露 `/metrics`（Prometheus text 格式）→ 各集群 **Prometheus Agent**（`kubernetes_sd_configs` 直抓，**不依赖 ServiceMonitor CRD**）→ `remote_write` 到**中心 Prometheus** → 大盘/告警。格式统一是跨服务聚合的前提。
+>
+> ⚠️ 抓取侧**必须开 `honor_labels: true`**，否则本文件定义的通用 label 会被 Prometheus 的服务端 label 顶掉 —— 见「抓取侧的 label 冲突」。
 
 ## 指标命名前缀
 
@@ -38,6 +40,59 @@ SDK 统一为所有注册的指标自动附加以下 **const label**（值来自
   - 即：**同一条指标**，单社区场景填默认值即可；多社区场景填覆盖值。注册一次，两用。
 - 若官方库只支持 const label（无法按请求覆盖），SDK 应暴露「注册时声明该指标 community 是否动态」的两套方法，内部按官方库能力映射到 const label 或普通 label。
 
+## 抓取侧的 label 冲突（Agent / 抓取配置必读）
+
+上面那四个通用 label 是**服务自己暴露出来的**（scraped label）。Prometheus 抓取时还会附加一批
+**服务端 label**：`job`、`instance`（**默认值就是抓取地址 `__address__`**），以及
+`kubernetes_sd_configs` / `relabel_configs` 打上的 label。**两者同名即冲突。**
+
+冲突时的行为由 job 上的 [`honor_labels`](https://prometheus.io/docs/prometheus/latest/configuration/configuration/) 决定：
+
+| `honor_labels` | 结果 |
+| --- | --- |
+| `false`（**Prometheus 默认**） | **服务端 label 获胜**，服务暴露的那个被改名成 `exported_<原名>` |
+| `true` | **服务暴露的获胜**，冲突的那个服务端 label 被丢弃 |
+
+> ⚠️ **规则：所有抓取本 SDK 输出指标的 job，一律 `honor_labels: true`。**
+
+不开的话，`instance` 是**必然**会被顶掉的一个 —— 不需要写任何 relabel，Prometheus 天生就会把
+`__address__` 塞进 `instance`，于是：
+
+- 契约要求的 `instance` 变成抓取地址，SDK 打的部署实例名被挤到 `exported_instance`；
+- **日志里的 `instance` 是部署实例名，指标里的 `instance` 是 pod IP —— 同一个字段名两套含义，
+  日志与指标再也无法用 `instance` 关联**；
+- 按本契约写的查询/告警会**静默查空**（`exported_instance` 这个键不在契约里，不报错、只是没数）。
+
+实测输出（`prometheus 3.11.3`，同一靶子、两个 job 只差 `honor_labels` 一行）：
+
+```
+# honor_labels: false（默认）—— SDK 打的 instance 被顶掉
+http_server_requests_total{instance="127.0.0.1:18081", exported_instance="pod-1", service="review", …}
+
+# honor_labels: true —— 契约字段保住
+http_server_requests_total{instance="pod-1", service="review", …}
+```
+
+### 三条配套纪律
+
+1. **`honor_labels` 是逐 label 生效的**，不是全有全无 —— **不冲突**的服务端 label 会原样保留。
+   所以「开 `honor_labels: true`」与「用 SD / relabel 打 `namespace` / `pod` 等 SDK 不输出的
+   label」**可以并存**，这也是推荐的组合：`instance` 归 SDK，`namespace` / `pod` 归抓取侧。
+2. **`instance` 已被 SDK 占用。** 抓取侧若要保留目标地址（排查「这条数来自哪个 pod」很有用），
+   **另起一个 label**（如 `pod_ip`），不要占用 `instance` —— `honor_labels: true` 下两者无法共存。
+3. **不要把 `__meta_kubernetes_service_name` 直接映射成 `service`** —— 与 SDK 的 `service` 正面冲突。
+   需要的话起名 `k8s_service` 之类。
+
+> **同一条规则对整个 Kubernetes 生态的 exporter 都成立**（例如 kube-state-metrics 自带
+> `namespace` / `pod`，那是**被监控对象**的维度）。Agent 侧**所有 job 统一开 `honor_labels: true`**，
+> 不要按 job 分别判断。实测踩过的坑：KSM job 上打过同名 target label，结果 83 个 Pod 的
+> `kube_pod_info` 全被贴成 `namespace="monitoring"`、真实命名空间被挤到 `exported_namespace`，
+> 任何 `kube_pod_info{namespace="review"}` 都查不到数（见 infra-common#4272）。
+
+> **写入瘦身的禁忌**：`write_relabel_configs` 里做 `labeldrop` 时，**不要 drop
+> `service` / `env` / `instance` / `community`** —— 这四个是跨语言、跨集群查询的锚点，drop 掉之后
+> 该集群的数据在中心大盘上直接归不了类。该 drop 的是 `container` / `container_id` / `uid` 这类。
+
 ## 默认暴露的中间件指标（可选，按服务依赖挑）
 
 | 指标 | 类型 | label |
@@ -60,7 +115,7 @@ SDK 统一为所有注册的指标自动附加以下 **const label**（值来自
 
 - 每个服务暴露一个统一 `/metrics` HTTP 端点（Prometheus text exposition）。
 - 抓取协议：HTTP `GET /metrics`，官方库默认 behavior，content-type `text/plain; version=0.0.4`。
-- 多语言同构：四个语言 SDK 都要能输出**语义等价**的 `service/env/instance/community` 组合，供 ServiceMonitor 统一抓取、AOM/Cortex 统一查询。
+- 多语言同构：四个语言 SDK 都要能输出**语义等价**的 `service/env/instance/community` 组合，供各集群 Agent 统一抓取（`kubernetes_sd_configs`，不依赖 ServiceMonitor CRD）、中心 Prometheus 统一查询。
   - 同构的**边界**：`service/env/instance/community` 这套通用 label 与「不重复埋点」的官方 instrumentation 是强约束；
     服务端指标的**名字与其余 label** 则由各语言官方库的既定形状决定，SDK 只做装配、不改名。
     因此 Java（Actuator + Micrometer）的 `http_server_requests_seconds` / `status` / `uri` 与
