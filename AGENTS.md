@@ -80,7 +80,7 @@ obslog.ErrorContext(ctx, "get account failed", "user_id", uid, "error", err) // 
 
 // 指标：注册一次；community label 自动排首位，取请求覆盖或回退默认
 m := obsmetrics.New(obsmetrics.Config{Service: "review", Env: "test", Instance: "pod-1", Community: "openEuler"})
-built := m.NewCounterVec("built_releases", "发布的构建数", "kind")
+built := m.NewCounterVec("built_releases_total", "发布的构建数", "kind")
 built.Inc("tag")
 built.IncWithContext(ctx, "tag") // 请求内 → 该条 series 的 community 取 ctx 覆盖值
 
@@ -96,7 +96,22 @@ ctx = sdkctx.WithCommunity(ctx, "mindspore")
 ctx = sdkctx.WithRequestID(ctx, "req-123")
 ```
 
-指标注册：`NewCounterVec` / `NewGaugeVec` / `NewHistogramVec` / `NewHistogramVecWithBuckets`，名称为**基础名**（不带 `_total` / `_seconds`）；暴露用 `m.Handler()`。
+指标注册：`NewCounterVec` / `NewGaugeVec` / `NewHistogramVec` / `NewHistogramVecWithBuckets`；暴露用 `m.Handler()`。
+
+> ⚠️ **Go 传最终名，SDK 不补任何后缀。** counter 要自己带 `_total`，histogram 要自己带 `_seconds`
+> （后者只是命名约定，`client_golang` 同样不会追加）。原因：`m.Handler()` 是
+> `promhttp.HandlerFor(reg, promhttp.HandlerOpts{})`，`EnableOpenMetrics` 默认 **false**，永远走
+> 经典 text 格式 —— 而 `client_golang` 只在 OpenMetrics 格式下才补 `_total`。
+> **注册什么名字就暴露什么名字。**
+>
+> 实测（`obs_sdk` 生成的 FQName 不含额外后缀）：`NewCounterVec("events_total", …)` 暴露 `events_total`；
+> 传 `events` 就只暴露 `events` —— 于是既没有 `_total`、也不符合
+> [spec/metrics-format.md](spec/metrics-format.md)「单位后缀遵循 Prometheus 约定」那条。
+> histogram 同理：`NewHistogramVec("latency_seconds", …)` 暴露 `latency_seconds_bucket/_sum/_count`，
+> 不会因为类型是 histogram 就补 `_seconds`。
+>
+> **不要照 Node / Java 的写法类推**：Node 的 `prom-client` 也要最终名（SDK 不改名），
+> 只有 Java 的 Micrometer **会**自动补后缀 —— 那是 Micrometer 的行为，不是 SDK 的。
 
 ### Python（`python/`）
 
