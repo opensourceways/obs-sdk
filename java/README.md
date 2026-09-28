@@ -28,9 +28,11 @@ JDK 17 + Maven：
 mvn test
 ```
 
-> 当前开发机无 JDK/Maven，Java 代码未在本机编译运行；已按 Micrometer 1.13 公开 API 编写，
-> 由仓库 CI（.github/workflows/ci.yml 的 java job）负责编译 + 跑 `mvn test` 验证。
-> 如 CI 暴露问题，以 CI 输出为准修复。
+> 本模块按 **Micrometer 1.12** 公开 API 编写，与 Spring Boot 3.2.x 的依赖管理版本对齐
+> （Boot 3.2.9 锁定 micrometer 1.12.9，Prometheus registry 包名为 `io.micrometer.prometheus`）。
+> micrometer 1.13 起该包名改为 `io.micrometer.prometheusmetrics`，接入 Boot 3.3+ 的服务需额外
+> 引入 `micrometer-registry-prometheus-simpleclient`（提供同名的 `io.micrometer.prometheus` 包）。
+> 由仓库 CI（.github/workflows/ci.yml 的 java job）执行 `mvn test` 验证。
 
 ## 指标使用
 
