@@ -28,7 +28,7 @@ opensourceways 微服务的**可观测薄封装 SDK monorepo**：把「结构化
 
 ```
 spec/     契约层：log-format / metrics-format / common-fields / community-values（唯一权威定义）
-go/       obs-sdk-go     —— log / metrics / sdkctx / middleware(+ginmw)
+go/       obs-sdk-go     —— log / metrics / sdkctx / middleware(+ginmw,+beegomw)
 python/   obs-sdk-python —— obs_sdk/{log,metrics,_context,middleware}
 node/     obs-sdk-node   —— lib/{log,metrics,context,middleware}
 java/     obs-sdk-java   —— io.opensourceways.obssdk.{ObsSdkConfig,ObsMetrics,log,context,middleware}
@@ -90,6 +90,9 @@ h := obshttpmw.New(obshttpmw.Options{
     ResolveCommunity: func(r *http.Request) string { /* "/mindspore" → "mindspore" */ return "" },
 }).Then(myHandler)
 // gin：r.Use(ginmw.Middleware(ginmw.Options{Metrics: m}))
+// beego v2：beego.InsertFilterChain("/*", beegomw.Middleware(beegomw.Options{Metrics: m}))
+//   必须用 InsertFilterChain —— Controller.StopRun() 会跳过 AfterExec/FinishRouter，
+//   用 InsertFilter 会静默漏掉鉴权失败的 401/403。path label 取路由模板。
 
 // 请求内覆盖（trace_id/span_id 为二期预留）
 ctx = sdkctx.WithCommunity(ctx, "mindspore")
