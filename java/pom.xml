@@ -15,7 +15,11 @@
   <properties>
     <maven.compiler.release>17</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <micrometer.version>1.13.6</micrometer.version>
+    <!-- 对齐 Spring Boot 3.2.x 的 micrometer 版本（Boot 3.2.9 dependencyManagement
+         锁定 micrometer 1.12.9）。micrometer 1.13 把 Prometheus registry 的包名从
+         io.micrometer.prometheus 改为 io.micrometer.prometheusmetrics，若按 1.13 编译，
+         接入 Boot 3.2.x 的服务会在运行期 NoClassDefFoundError。 -->
+    <micrometer.version>1.12.9</micrometer.version>
     <slf4j.version>2.0.13</slf4j.version>
     <logback.version>1.5.12</logback.version>
     <logstash-encoder.version>7.4</logstash-encoder.version>
