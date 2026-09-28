@@ -7,7 +7,7 @@
 
 ## 目录结构
 - [spec/](spec/README.md) — 契约层（日志 JSON schema、通用字段、指标命名/label、community 双层注入、trace_id 预留）——单一事实来源
-- [go/](go/README.md) — obs-sdk-go（encoding/json 单行 JSON 日志 + client_golang 指标 + http/gin 中间件）
+- [go/](go/README.md) — obs-sdk-go（encoding/json 单行 JSON 日志 + client_golang 指标 + http/gin/beego 中间件）
 - [python/](python/README.md) — obs-sdk-python（logging JSON Formatter + prometheus-client + FastAPI/Flask/Django 适配）
 - [java/](java/README.md) — obs-sdk-java（logback + logstash JSON encoder + micrometer/prometheus registry）
 - [node/](node/README.md) — obs-sdk-node（JSON serializer + prom-client + express 中间件）
