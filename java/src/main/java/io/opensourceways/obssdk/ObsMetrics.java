@@ -22,9 +22,13 @@ import java.util.concurrent.atomic.AtomicReference;
  * （见 spec/metrics-format.md、common-fields.md）。
  *
  * <ul>
- *   <li>service/env/instance 三个部署级字段注册为 <b>common tags</b>（const label）；</li>
- *   <li><b>community 建模为普通可变 label</b>：值取请求上下文覆盖（可信判定点显式写入），
- *       无覆盖时回退部署默认 —— 「注册一次两用」，单社区/多社区共用同一注册点。</li>
+ *   <li>service/env/instance/community <b>四个部署级字段</b>注册为 <b>common tags</b>（部署默认值），
+ *       对注册到本 registry 的<b>所有</b> meter 生效 —— 包括不经本类、由官方 instrumentation
+ *       直接注册的 meter（如 Spring Boot Actuator 的 {@code http_server_requests_seconds}）；</li>
+ *   <li><b>community 另外建模为普通可变 label</b>：值取请求上下文覆盖（可信判定点显式写入），
+ *       无覆盖时回退上面的部署默认 —— 「注册一次两用」，单社区/多社区共用同一注册点。
+ *       meter 自带的 community 优先于 commonTag 里的默认值（Micrometer 合并同名 tag 时保留
+ *       meter 自己那个），故请求级覆盖不受 commonTag 影响。</li>
  *   <li>{@code namespace} 可选：给指标名加前缀（如用 {@code service} 拼业务指标的
  *       {@code <service>_} 前缀）；SDK 不为中间件公共指标定义前缀，别用它补前缀。</li>
  * </ul>
@@ -49,13 +53,19 @@ public final class ObsMetrics {
         this.defaultCommunity = cfg.community();
         this.namespace = cfg.namespace();
 
-        // service/env/instance 恒为 const label，取值恒非空（ObsSdkConfig 已做三级兜底，
-        // 见 internal/Env），故无条件注册。条件注册会让未配置的字段整个缺席，
-        // 与 Go/Python/Node 输出的 label 集不一致 —— 大盘按 label 过滤时会漏掉这些服务。
+        // 四个部署级字段恒为部署默认值、恒非空（ObsSdkConfig 已做三级兜底，见 internal/Env），
+        // 故无条件注册。条件注册会让未配置的字段整个缺席，与 Go/Python/Node 输出的 label 集
+        // 不一致 —— 大盘按 label 过滤时会漏掉这些服务。
+        //
+        // community 必须在这里也注册一份（spec：静态默认打进注册表）：Java 的服务端指标由
+        // Actuator + Micrometer 官方 instrumentation 产出，绕开本类的 counter/gauge/histogram，
+        // 只靠下方 tags() 逐 meter 注入的话，http_server_requests_seconds / jvm_* 等
+        // 第三方注册的 meter 会缺 community。
         registry.config().commonTags(Tags.of(
                 Tag.of("service", service),
                 Tag.of("env", envName),
-                Tag.of("instance", instance)));
+                Tag.of("instance", instance),
+                Tag.of("community", defaultCommunity)));
     }
 
     public static ObsMetrics of(ObsSdkConfig cfg) {
