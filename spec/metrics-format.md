@@ -99,7 +99,6 @@ http_server_requests_total{instance="pod-1", service="review", …}
 | --- | --- | --- |
 | `http_server_requests_total` | Counter | service, env, instance, community, method, path(可选,注意基数), status_code |
 | `http_server_request_duration_seconds` | Histogram | service, env, instance, community, method, path(可选), status_code |
-| `log_entries_total` | Counter | service, env, instance, community, level |
 
 > 不强制：服务只要保证**自己注册的业务指标**带通用 label 即可；中间件公共指标（若启用）用上述通用名，
 > 且**路径不入 label 或按低基数路由模板入 label**（`/items/{id}`，不是 `/items/123`）。
