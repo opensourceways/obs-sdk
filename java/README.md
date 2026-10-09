@@ -97,6 +97,16 @@ public PrometheusMeterRegistry prometheusRegistry(ObsSdkConfig obsConfig) {
 在接入服务里把 SDK 的 business 指标注册到同一个 `PrometheusMeterRegistry`（上面 bean 的实例），
 即可与 Actuator 的服务端指标合并暴露给 AOM 抓取。
 
+Actuator 托管的 meter（`http_server_requests_seconds`，以及 `jvm_*` / `process_*` 等）会自动带上
+`service` / `env` / `instance` / `community` 四个通用 label：前三个来自 registry 的 common tags，
+`community` 取**部署默认值**（`OBS_COMMUNITY`，同样由 registry 的 common tags 注入）。
+所以两个 register 都在同一个 `ObsMetrics.of(cfg).meterRegistry()` 上时，不需要在应用侧再补 label。
+
+> **限制**：服务端指标的 `community` 无法按请求区分——官方 instrumentation 在 meter
+> **注册期**就定型了，注册时没有请求上下文。多社区集中部署的服务，`http_server_requests_seconds`
+> 上的 `community` 恒为部署默认值；需要按请求区分社区，请用 SDK 的业务指标
+> （`ObsMetrics` 的 `counter` / `gauge` / `histogram`，它们取 `RequestContext` 的覆盖值）。
+
 ## 请求上下文中间件（可选 Servlet Filter）
 
 ```java

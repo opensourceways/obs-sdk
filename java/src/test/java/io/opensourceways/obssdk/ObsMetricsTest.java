@@ -3,6 +3,7 @@ package io.opensourceways.obssdk;
 import io.opensourceways.obssdk.context.RequestContext;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -132,6 +133,38 @@ class ObsMetricsTest {
         assertTrue(text.contains("latency_seconds_bucket{"), text);
         assertTrue(text.contains("le=\"0.1\""), text);
         assertTrue(text.contains("le=\"0.5\""), text);
+    }
+
+    /**
+     * 回归：<b>不经过</b>本 SDK 的 counter/gauge/histogram、由官方 instrumentation 直接注册到
+     * registry 的 meter，也必须带齐四个通用 label。
+     *
+     * <p>Java 的服务端指标不重复埋点，由 Spring Boot Actuator + Micrometer 官方 server
+     * instrumentation 产出（{@code http_server_requests_seconds}，以及 {@code jvm_*} /
+     * {@code process_*} 等），它们<b>绕开</b>本 SDK 的注册路径。此前 {@code community} 只在
+     * {@link ObsMetrics} 自己的注册路径里逐 meter 注入，这类 meter 因此拿不到它 ——
+     * 而 spec 要求每个时间序列都必须带 {@code service/env/instance/community}。
+     */
+    @Test
+    void 官方instrumentation直接注册的meter也带四个通用label() {
+        ObsMetrics m = ObsMetrics.of(cfg("service", "review", "env", "test",
+                "instance", "pod-1", "community", "openeuler"));
+
+        // 模拟 Actuator：Timer 名为 http.server.requests（Micrometer 默认名），
+        // 直接注册到 registry，完全不经过 SDK 的注册 API。
+        m.meterRegistry().timer("http.server.requests", "uri", "/oneid/login")
+                .record(Duration.ofMillis(5));
+
+        String text = m.text();
+        List<String> rows = samples(text, "http_server_requests_seconds_count");
+        assertEquals(1, rows.size(), "应产出 http_server_requests_seconds_count： " + text);
+
+        String line = rows.get(0);
+        assertTrue(line.contains("uri=\"/oneid/login\""), line);
+        assertTrue(line.contains("service=\"review\""), line);
+        assertTrue(line.contains("env=\"test\""), line);
+        assertTrue(line.contains("instance=\"pod-1\""), line);
+        assertTrue(line.contains("community=\"openeuler\""), line);
     }
 
     private static String lineWith(List<String> lines, String sub) {
