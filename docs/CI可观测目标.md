@@ -57,7 +57,7 @@ CI 是把代码变成"能合入的结论"的生产线。它的"可用性"和微�
 
 | # | 在问什么 | 现在能不能回答 | 目标口径（可量化） |
 | --- | --- | --- | --- |
-| Q1 | **还要等多久？** | 半个——只有"pending 太久"的点告警，没有分布 | **排队时长**（提交 → 开始执行）可查，P95 **< 10 min** |
+| Q1 | **还要等多久？** | ⚠️ 分布**已有**（`gha_job_startup_duration_seconds`，45 桶），但**没人算分位数**；"段一"零信号 | **排队时长**（提交 → 开始执行）可查，P95 **< 10 min** |
 | Q2 | **这次跑得怎么样？** | 半个——只有"超过 2.5 h"的点告警 | **执行耗时** P95 **< 10 min**；**成败**可按仓库 / 规格 / 用户下钻 |
 | Q3 | **资源用得值不值？** | 节点 / 卡维度能看，但**算不出"使用率"这个数** | **NPU 卡时利用率 > 30%**，并能识别"占着不用" |
 | Q4 | **出问题谁先知道？** | 运维先知道（邮件），用户更晚 | **提前于用户识别**；用户可自助的先提示用户 |
@@ -86,6 +86,7 @@ CI 是把代码变成"能合入的结论"的生产线。它的"可用性"和微�
 | **拨测 9 类** | `github-probe`（5 min，直连 + gh-proxy 双路）、`github-status`（GitHub 官方状态页）、`shared-disk`（10 min）、`cloud-account`（每小时余额）、`sa-audit`（每小时）、`cert-expiry`（每天）、`mirror-sync`（30 min）、`runner-version`、`sfs-turbo-disk` |
 | **告警 31 条** | 见下 |
 | **大盘** | **ARC 官方大盘**（`manifests/grafana/grafana-dashboard-arc.yaml`，约 25 个面板：Runner Performance / Startup Duration / Job Execution / Pending Runners / Out of Memory / Queue Depth / Reconcile Time …），另有一个 sglang 业务大盘 |
+| **排队相关指标** | `gha_job_startup_duration_seconds`（**histogram**，每个 scale-set 显式配了 45 个桶，0.01 s → 3600 s）、`gha_controller_pending_ephemeral_runners`（gauge）、`gha_running_jobs` / `gha_busy_runners` / `gha_idle_runners` / `gha_desired_runners`（均带 `repository` / `organization` 等 label） |
 
 现有 31 条告警按**判定对象**分四类：
 
@@ -105,12 +106,16 @@ CI 是把代码变成"能合入的结论"的生产线。它的"可用性"和微�
 | --- | --- | --- |
 | **资源层** | 节点 / NPU 卡 / 磁盘 / 网络 | ✅ node-exporter + kube-state-metrics，已有 |
 | **控制器层** | ARC 的 runner 伸缩、队列、reconcile | ✅ ARC 自带指标 + 官方大盘，已有 |
-| **作业层** | **一次 workflow run 的等待、耗时、成败、归因** | ❌ 只有两条"超长"点告警；没有分布、没有下钻维度、没有用户出口 |
+| **作业层** | **一次 workflow run 的等待、耗时、成败、归因** | ⚠️ 排队时长**有分布数据**（没算分位数）、另有两条"超长"点告警；**段一零信号**、无下钻维度、无用户出口 |
 
 作业层的三个具体缺口：
 
-1. **"等待"没有被度量。** 现在只有 `RunnerPodPendingTooLong` 这一个**点信号**（pod 一直 pending），
-   回答不了"今天下午 vllm 的 PR 平均等了多久"。而 #1874 的验收标准正是排队 < 10 min——**没有分布就算不出达标率**。
+1. **"等待"有数据，但没有判定，而且只覆盖一半。** 排队时长**已经有 histogram**——`gha_job_startup_duration_seconds`，
+   每个 scale-set 显式配了 **45 个桶（0.01 s → 3600 s）**，大盘上也有 `Startup Duration` 面板。缺的是两端：
+   **没人算分位数**（面板只做 `sum by(le) (increase(..._bucket))`，全仓无一处 `histogram_quantile` 作用在它上面，
+   所以 #1874 的"P95 < 10 min"是**数据齐了、判定没做**）、**"段一"完全没信号**（见 §1.3 末）。
+   另外，唯一一条量"等太久"的告警 `RunnerPodPendingTooLong` 是 **`for: 35m`**，而目标是 P95 < 10 min——
+   **它响的时候 SLO 已被超 3.5 倍**；它数的是"pod 已创建但还没被调度到节点"，用途是防卡死，不是测排队。
 2. **没有下钻维度。** 现有告警的 label 是 `cluster` / `namespace` / `pod`，这是**运维视角**（哪个集群坏了）。
    用户问的是"**我这个仓库为什么慢**"，需要 `repo` / `runs-on` 规格 / 触发者这些维度，现在一个都没有。
 3. **出口是运维，不是用户。** 告警路由到的是**逐个列出的运维个人邮箱**（`alertmanager-config-secret.yaml`），
@@ -128,7 +133,8 @@ CI 是把代码变成"能合入的结论"的生产线。它的"可用性"和微�
 | **C4** | 失败**卡在哪一阶段**？ | 阶段维度的失败 Counter（见下） | Q4 / 自助提示 |
 | **C5** | 每条链路上**至少一个无条件 set 的 gauge** | — | 防"全静默 = 全成功" |
 
-> **C1 是线 A 的重点**，它是唯一一个"现在完全没有、而验收标准直接要"的信号。
+> **C1 是线 A 的重点**——不是因为它"现在完全没有"（分布数据已有，见 §1.2），而是因为**验收标准要的那个数（P95）现在没人算**；
+> 且它天然跨两条链路（段一在 GitHub 侧、段二在集群侧），比 C2–C5 都难凑齐。
 > **C5 沿用姊妹篇的教训**：Counter 在没有事件时是**静默**的，"今天一次都没排队"和"排队指标根本没埋"在图上长得一样。
 > 所以每条关键链路上至少要有**一个无条件 set 的 gauge**（如"当前队列深度""当前 pending runner 数"）来证明这条链路还活着。
 
@@ -141,10 +147,19 @@ CI 是把代码变成"能合入的结论"的生产线。它的"可用性"和微�
 **一个必须点破的取数盲区**：GitHub Actions 的"排队"有**两段**——
 
 - **段一：job 已在 GitHub 侧排队，但还没有 runner 被分配。** 此时集群里**什么都没有**，本地零信号。
-- **段二：runner 已被分配、pod 已创建但在等资源。** 这段 `RunnerPodPendingTooLong` 能看见。
+- **段二：runner 已被分配，但作业还没真正跑起来**（等调度 / 等镜像 / 等 runner 注册）。
 
-`RunnerPodPendingTooLong` 只能覆盖**段二**，而 #1874「排队 < 10 min」的痛点**主要在段一**。
-**段一只能从 GitHub 侧取数**（API / webhook），这是 §5 待确认项 1 的由来。
+**段二的分布已经有了**——`gha_job_startup_duration_seconds` 就是为它埋的 histogram（桶一直配到 3600 s，说明设计时就预期它会很长）。
+而 **#1874「排队 < 10 min」的痛点主要在段一**，段一**只能从 GitHub 侧取数**（API / webhook），本地无论如何也量不到。
+
+> 这条不是推测：`arc-fedsched` 的 `wait_from_arrival_seconds` 注释直接写着 ——
+> *"Seconds from arrival to the release；**equal to `wait_seconds` until a GitHub queue time exists**"* ——
+> 连未来那套调度器也把"GitHub 侧的排队时间"当成一个**外部输入**，拿不到就先退化成"从到达算起"。
+> 这是 §5 待确认项 1 的由来。
+
+顺带纠一个容易误解的面板名：ARC 官方大盘里的 **`Queue Depth` / `Workqueue Queue Duration` 不是用户 job 的排队**，
+它们是 `workqueue_depth` / `workqueue_queue_duration_seconds`——**控制器自己的 reconcile 队列**（controller-runtime 标准指标）。
+真正对应用户排队的是 `Startup Duration` 面板，以及 `Pending Runners`（`gha_controller_pending_ephemeral_runners`）。
 
 ### 1.4 质量问题分类与自助程度分级（线 A）
 
@@ -422,6 +437,8 @@ GitCode PR
 | 现有告警 31 条 | `ascend-ci-deployment/monitoring/config-for-infra-cn4-x86-common-cluster/prometheus-rules.yaml` |
 | 告警只发运维个人邮箱 | `monitoring/config-for-infra-cn4-x86-common-cluster/alertmanager-config-secret.yaml` |
 | ARC 官方大盘面板 | `ascend-ci-deployment/manifests/grafana/grafana-dashboard-arc.yaml` |
+| 排队分布**已有**但未算分位数；`RunnerPodPendingTooLong` 为 `for: 35m` | `ascend-ci-deployment/projects/*/*/values.yaml`（`histograms: gha_job_startup_duration_seconds`，45 桶）、同上大盘的 `Startup Duration` 面板、`monitoring/config-for-infra-cn4-x86-common-cluster/prometheus-rules.yaml:734` |
+| 段一需 GitHub 侧 queue time（非推测） | `arc-fedsched/pkg/metrics/metrics.go`（`wait_from_arrival_seconds` 的 Help 文案） |
 | 两个 10 min / 30% 的验收标准 | [backlog#1874](https://github.com/opensourceways/backlog/issues/1874) 里程碑 2 与验收标准 |
 | 自愈 ≥ 80% / SRE -60% / 三档 / 四个模块 | [backlog#2080](https://github.com/opensourceways/backlog/issues/2080) 验收标准与其需求分析说明书 |
 | GitHub Check 的输出形态 | [backlog#296](https://github.com/opensourceways/backlog/issues/296) |
