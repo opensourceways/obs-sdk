@@ -29,7 +29,7 @@
 | **代码托管** | GitHub | **GitCode** |
 | **CI 引擎** | GitHub Actions + **ARC 自托管 runner** | **两代并存**：**openEuler** 仍用 **Jenkins 门禁**（`community_check_v2`）；**其余全部**已迁 **openlibing + 华为云 CodeArts** |
 | **实际执行载体** | K8s（ARC runner pod） | openEuler：**Jenkins**（不在 K8s 上）；**其余：Argo Workflow（跑在 K8s 上）**——CodeArts 只做触发与 UI |
-| **提交触发** | `on: pull_request` | openEuler：webhook → ci-bot → Jenkins job；其余：CodeArts 流水线 |
+| **提交触发** | `on: pull_request` | openEuler：webhook → ci-bot → Jenkins job（**ci-bot 不在本仓可见范围**，见 §2.2）；其余：CodeArts 流水线 |
 | **结果回写** | GitHub Check / commit status | openEuler：**ci-bot 标签** `ci_processing` → `ci_successful` / `ci_failed`；其余：各社区自己的聚合脚本（如 Ascend 蓝区 `monitor.py` → PR 评论表格） |
 | **稀缺资源** | **NPU 卡**（贵、按卡时计价） | **CPU 构建机 / 净室环境**（数量与并发槽位） |
 | **用户最痛的** | **等太久**（拿不到卡） | **结果不可信、看不到为什么挂** |
@@ -274,7 +274,9 @@ CI 是把代码变成"能合入的结论"的生产线。它的"可用性"和微�
 | **src-openeuler** | `check_binary_file`、`check_package_license`、`check_package_yaml_file`、`check_spec_file`、`check_consistency`、`check_build`、`check_install`、`compare_package`（+17 个 interface-change 子项：add_rpms、delete_rpms、kabi、drive_kabi、kconfig、ko、rpm_files、rpm_provides、rpm_requires、rpm_abi、rpm_jabi、rpm_cmd、rpm_config、rpm_header、rpm_service、rpm_lib、rpm_symbol） |
 | **openEuler** | `check_code`（→ majun / openlibing）、`check_sca`、`check_package_license`、x86-64 / aarch64 构建 |
 
-**webhook 链路**（本地可查部分）：
+**门禁的触发与回写不在机器人链路上——这是必须先说清的一条边界。**
+
+GitCode 侧确实有一条通用的 PR 事件分发链路，但**它服务的是一批业务机器人（标签 / 审查 / CLA / 评论），与 Jenkins 门禁没有连接**：
 
 ```
 GitCode PR 事件 ─► robot-universal-hook-delivery ─► Kafka metadata_webhook_gitcode
@@ -283,9 +285,19 @@ GitCode PR 事件 ─► robot-universal-hook-delivery ─► Kafka metadata_web
                                     robot-hook-dispatcher ─► robot-universal-access ─► 业务机器人
 ```
 
-> ⚠️ **链路里断了一截，这是线 B 第一个要补的洞**：`community-robots` 全仓 grep `jenkins` **零命中**——
-> **没有任何机器人读 Jenkins 结果，也没有任何机器人给 GitCode 写 commit status**。
-> 标签 `ci_successful` / `ci_failed` 是谁写的、从哪取的结果，**本地看不到**。
+> ⚠️ **这条链路与门禁无关，不要把它当成门禁的触发路径。** 证据：
+> - 全部 robot 仓（`community-robots/`、`robot-universal-*`、`sync-bot`）里**没有任何一处 Jenkins 集成**——
+>   唯一两处 "Jenkins" 是 `.ai-flow/deploy/preview.sh` 的注释（预览环境借 Jenkins 发 kubeconfig）与
+>   `docs/ai-workflow-progress-report.md` 的 #1144 进度表，都不是集成。
+> - 唯一名字上管 CI 门禁的机器人是 `robot-universal-quality-gate-trigger`（`codecheck_signer.go` 给外部代码扫描签名），
+>   但它两个 handler 都还是 `// TODO`，且其目标是 **CodeArts 流水线**，不是这套 Jenkins 门禁。
+>
+> **真正的空白在另一头**：门禁的触发与结果回写（`ci_processing` → `ci_successful` / `ci_failed` 标签）
+> **由本仓之外的东西承担**，本地看不到。能看到的只有它的**消费方**——
+> `software-package-gateway` 监听 PR 上的 `ci_successful` / `ci_failed` 标签推进软件包状态机；
+> **生产方（谁在什么时候把标签写上去、依据是哪次构建的哪个结果）不可见**。
+>
+> 要补的洞因此不是"机器人链路断了一截"，而是**"门禁结果的生产方与回写机制在本地不可见"**。
 > 不补上这一截，Q2 的"结构化失败原因"和 §3.2 的用户出口都无处安放。
 
 ### 2.3 现状：已有四件制品，但全是离线批处理看板；监控接入为零
@@ -428,8 +440,10 @@ PR Checks
 现状（**这是线 B 最干净的一个空白**）：
 
 - **没有任何服务把 Jenkins 构建结果 / 失败原因回写到 GitCode PR。**
-  `community-robots` 全仓 grep `jenkins` 零命中；GitCode PR 上的评论只有人工审查 checklist、标签、keeper 门禁信号。
-- 唯一接近的出口是 **`jenkins-log-viewer` 的跳转链接**——机器人在 PR 评论里贴一个 URL，用户自己点进去看。
+  机器人侧全仓 grep `jenkins` 零命中（`community-robots/`、`robot-universal-*`、`sync-bot`，见 §2.2），
+  回写实际上只有 **ci-bot 的二态标签**（通过 / 不通过），GitCode PR 上的其它评论只有人工审查 checklist 与 keeper 门禁信号。
+- 唯一接近"失败原因"的出口是 **`jenkins-log-viewer` 的跳转链接**——由 **MindSpore 侧的机器人**在 PR 评论里贴一个 URL，用户自己点进去看
+  （**注意这是 §2.2 说明的"不做"的那一支，不是本次的 openEuler 门禁**）。
   **这是"入口"不是"摘要"**：不点开就不知道挂了什么，且它明确声明"不接触 GitCode"。
 - 失败原因**仍然需要人工深入 Jenkins 控制台**。
 
@@ -474,7 +488,7 @@ GitCode PR
 | 2 | **线 A · §1.4 三档分类的初判** | 由 #2080 架构设计阶段逐条过审，本文只给维度 | ascend-ci 项目 |
 | 3 | **线 B · `repo` 是否进 metrics label**（§2.4 末） | 建议**不进**：metrics 只到 `org` / `check_type` / `result`，`repo` 级下钻交给看板。定了这条，线 B 的 metrics 与看板分工就清楚了 | 待定 |
 | 4 | **线 B · 指标落在哪**（§4 末） | 门禁集群 `openeuler-ci-cn4-cluster` 无监控栈，三种选择：复用 ns `infra-monitoring` / 给门禁集群配 Agent / 先只在门禁侧做轻量 exporter。**这是线 B 的前置问题** | 基础设施组 |
-| 5 | **线 B · `no_result` 的分母从哪来**（§2.4） | 需要确认"谁能写出 `ci_processing` 标签"——即 §2.2 那条断掉的链路归属哪个服务 | 待定 |
+| 5 | **线 B · `no_result` 的分母从哪来**（§2.4） | 需要确认"**谁写出 `ci_processing` / `ci_successful` / `ci_failed` 标签**"——这个生产方**不在本仓可见范围**（§2.2；机器人链路与门禁无关）。定位到它之前，`no_result` 只能靠 `/ci_mistake build_exception` 反推 | 待定 |
 | 6 | **线 B · 门禁的无条件 gauge 埋在哪**（J5） | 连带把"净室白名单 resolver 最后成功时间"这类当前完全不可见的机制一并纳入（§2.3 末） | 待定 |
 | 7 | **本文的落点拆解**：线 A 落在 `ascend-ci-deployment`（监控 / 告警 / 自愈）、`runner-container-hooks`（错误信息）、`ascend-runner-onboarding`（自动化）、`ascend-gha-runners/arc-fedsched`（调度指标）；**线 B 暂无对应仓** | 与 #2080 的工作量估算（约 15~20 人天，**只覆盖线 A**）分开排期，本文不做拆分 | 基础设施组 |
 | 8 | **大盘是否统一入口**（§4 末） | 与 #668「社区服务状态页的实现形态」一并定；两者都是"视图层入口"问题 | 运维 |
@@ -520,7 +534,9 @@ GitCode PR
 | CodeArts 的实际执行载体是 Argo Workflow（`convertorv2` 转 YAML → `argo submit` 到 K8s） | 同上 L86 |
 | Ascend 蓝区走 Gitee PR + CodeArts API + Majun + OBS，PR 门禁评论由聚合脚本产出 HTML 表格 | 同上 L79、L200 |
 | B-7：缺结果性判断 | [backlog#1938](https://github.com/opensourceways/backlog/issues/1938) 最后一条评论 |
-| webhook 链路、机器人不读 Jenkins 结果 | `community-robots/` 全仓 grep `jenkins` 零命中；`robot-universal-hook-delivery` → Kafka `metadata_webhook_gitcode` → `robot-hook-dispatcher` → `robot-universal-access` |
+| 机器人链路与门禁**无关**：机器人侧不读 Jenkins 结果 | `community-robots/`、`robot-universal-*`、`sync-bot` 全仓 grep `jenkins` 仅两处非集成命中（`community-robots/.ai-flow/deploy/preview.sh` 注释、`docs/ai-workflow-progress-report.md` 的 #1144 进度行） |
+| `robot-universal-quality-gate-trigger` 目标是 CodeArts、handler 仍 `// TODO` | `community-robots/robot-universal-quality-gate-trigger/`（`codecheck_signer.go` + `robot.go` 两个 handler）、`agent-development-specification/projects/docs/07-services/robot.md` L38 / L257 |
+| `ci_successful` / `ci_failed` 的**消费方**（生产方不可见） | `agent-development-specification/projects/docs/07-services/software-package.md` L100、`software-package-all.md` L119 / L160（gateway 监听 PR label 推进状态机） |
 | CodeArts 迁移方向 | `community-robots/robot-universal-quality-gate-trigger/`（`config.go` 指向 CodeArts 流水线；两个 handler 仍为 `// TODO`） |
 | 净室白名单 resolver 无监控 | `jenkins-log-scanner` 的 `vpc_ip_whitelist_auto_resolver`（ns `infra-security` CronJob） |
 | 线 B 调研全文 | [backlog#2080 评论](https://github.com/opensourceways/backlog/issues/2080#issuecomment-6081591152) |
