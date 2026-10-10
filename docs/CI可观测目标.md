@@ -274,31 +274,12 @@ CI 是把代码变成"能合入的结论"的生产线。它的"可用性"和微�
 | **src-openeuler** | `check_binary_file`、`check_package_license`、`check_package_yaml_file`、`check_spec_file`、`check_consistency`、`check_build`、`check_install`、`compare_package`（+17 个 interface-change 子项：add_rpms、delete_rpms、kabi、drive_kabi、kconfig、ko、rpm_files、rpm_provides、rpm_requires、rpm_abi、rpm_jabi、rpm_cmd、rpm_config、rpm_header、rpm_service、rpm_lib、rpm_symbol） |
 | **openEuler** | `check_code`（→ majun / openlibing）、`check_sca`、`check_package_license`、x86-64 / aarch64 构建 |
 
-**门禁的触发与回写不在机器人链路上——这是必须先说清的一条边界。**
+**门禁的触发与回写由 openEuler 侧的 ci-bot 承担，不在本仓可见范围**——本文只需知道它的两个产物：
+进入门禁时打 `ci_processing`，出结论时打 `ci_successful` / `ci_failed`（均见上表）。
+**生产方（谁在什么时候写标签、依据是哪次构建的哪个结果）不在本地**，这决定了两件事：
 
-GitCode 侧确实有一条通用的 PR 事件分发链路，但**它服务的是一批业务机器人（标签 / 审查 / CLA / 评论），与 Jenkins 门禁没有连接**：
-
-```
-GitCode PR 事件 ─► robot-universal-hook-delivery ─► Kafka metadata_webhook_gitcode
-                                                        │
-                                                        ▼
-                                    robot-hook-dispatcher ─► robot-universal-access ─► 业务机器人
-```
-
-> ⚠️ **这条链路与门禁无关，不要把它当成门禁的触发路径。** 证据：
-> - 全部 robot 仓（`community-robots/`、`robot-universal-*`、`sync-bot`）里**没有任何一处 Jenkins 集成**——
->   唯一两处 "Jenkins" 是 `.ai-flow/deploy/preview.sh` 的注释（预览环境借 Jenkins 发 kubeconfig）与
->   `docs/ai-workflow-progress-report.md` 的 #1144 进度表，都不是集成。
-> - 唯一名字上管 CI 门禁的机器人是 `robot-universal-quality-gate-trigger`（`codecheck_signer.go` 给外部代码扫描签名），
->   但它两个 handler 都还是 `// TODO`，且其目标是 **CodeArts 流水线**，不是这套 Jenkins 门禁。
->
-> **真正的空白在另一头**：门禁的触发与结果回写（`ci_processing` → `ci_successful` / `ci_failed` 标签）
-> **由本仓之外的东西承担**，本地看不到。能看到的只有它的**消费方**——
-> `software-package-gateway` 监听 PR 上的 `ci_successful` / `ci_failed` 标签推进软件包状态机；
-> **生产方（谁在什么时候把标签写上去、依据是哪次构建的哪个结果）不可见**。
->
-> 要补的洞因此不是"机器人链路断了一截"，而是**"门禁结果的生产方与回写机制在本地不可见"**。
-> 不补上这一截，Q2 的"结构化失败原因"和 §3.2 的用户出口都无处安放。
+- Q2 要的"结构化失败原因"**不能从标签反推**，只能从门禁侧自己埋点产出；
+- §2.4 里 `no_result` 的**分母**暂时拿不到，只能先用 `/ci_mistake build_exception` 反推（§5 待确认项 5）。
 
 ### 2.3 现状：已有四件制品，但全是离线批处理看板；监控接入为零
 
@@ -439,9 +420,8 @@ PR Checks
 
 现状（**这是线 B 最干净的一个空白**）：
 
-- **没有任何服务把 Jenkins 构建结果 / 失败原因回写到 GitCode PR。**
-  机器人侧全仓 grep `jenkins` 零命中（`community-robots/`、`robot-universal-*`、`sync-bot`，见 §2.2），
-  回写实际上只有 **ci-bot 的二态标签**（通过 / 不通过），GitCode PR 上的其它评论只有人工审查 checklist 与 keeper 门禁信号。
+- **没有任何地方把 Jenkins 构建结果 / 失败原因回写到 GitCode PR。**
+  回写实际上只有 **ci-bot 的二态标签**（通过 / 不通过），PR 上的其它评论只有人工审查 checklist 与 keeper 门禁信号。
 - 唯一接近"失败原因"的出口是 **`jenkins-log-viewer` 的跳转链接**——由 **MindSpore 侧的机器人**在 PR 评论里贴一个 URL，用户自己点进去看
   （**注意这是 §2.2 说明的"不做"的那一支，不是本次的 openEuler 门禁**）。
   **这是"入口"不是"摘要"**：不点开就不知道挂了什么，且它明确声明"不接触 GitCode"。
@@ -488,7 +468,7 @@ GitCode PR
 | 2 | **线 A · §1.4 三档分类的初判** | 由 #2080 架构设计阶段逐条过审，本文只给维度 | ascend-ci 项目 |
 | 3 | **线 B · `repo` 是否进 metrics label**（§2.4 末） | 建议**不进**：metrics 只到 `org` / `check_type` / `result`，`repo` 级下钻交给看板。定了这条，线 B 的 metrics 与看板分工就清楚了 | 待定 |
 | 4 | **线 B · 指标落在哪**（§4 末） | 门禁集群 `openeuler-ci-cn4-cluster` 无监控栈，三种选择：复用 ns `infra-monitoring` / 给门禁集群配 Agent / 先只在门禁侧做轻量 exporter。**这是线 B 的前置问题** | 基础设施组 |
-| 5 | **线 B · `no_result` 的分母从哪来**（§2.4） | 需要确认"**谁写出 `ci_processing` / `ci_successful` / `ci_failed` 标签**"——这个生产方**不在本仓可见范围**（§2.2；机器人链路与门禁无关）。定位到它之前，`no_result` 只能靠 `/ci_mistake build_exception` 反推 | 待定 |
+| 5 | **线 B · `no_result` 的分母从哪来**（§2.4） | 需要确认"**谁写出 `ci_processing` / `ci_successful` / `ci_failed` 标签**"——这个生产方**不在本仓可见范围**（§2.2）。定位到它之前，`no_result` 只能靠 `/ci_mistake build_exception` 反推 | 待定 |
 | 6 | **线 B · 门禁的无条件 gauge 埋在哪**（J5） | 连带把"净室白名单 resolver 最后成功时间"这类当前完全不可见的机制一并纳入（§2.3 末） | 待定 |
 | 7 | **本文的落点拆解**：线 A 落在 `ascend-ci-deployment`（监控 / 告警 / 自愈）、`runner-container-hooks`（错误信息）、`ascend-runner-onboarding`（自动化）、`ascend-gha-runners/arc-fedsched`（调度指标）；**线 B 暂无对应仓** | 与 #2080 的工作量估算（约 15~20 人天，**只覆盖线 A**）分开排期，本文不做拆分 | 基础设施组 |
 | 8 | **大盘是否统一入口**（§4 末） | 与 #668「社区服务状态页的实现形态」一并定；两者都是"视图层入口"问题 | 运维 |
@@ -534,8 +514,6 @@ GitCode PR
 | CodeArts 的实际执行载体是 Argo Workflow（`convertorv2` 转 YAML → `argo submit` 到 K8s） | 同上 L86 |
 | Ascend 蓝区走 Gitee PR + CodeArts API + Majun + OBS，PR 门禁评论由聚合脚本产出 HTML 表格 | 同上 L79、L200 |
 | B-7：缺结果性判断 | [backlog#1938](https://github.com/opensourceways/backlog/issues/1938) 最后一条评论 |
-| 机器人链路与门禁**无关**：机器人侧不读 Jenkins 结果 | `community-robots/`、`robot-universal-*`、`sync-bot` 全仓 grep `jenkins` 仅两处非集成命中（`community-robots/.ai-flow/deploy/preview.sh` 注释、`docs/ai-workflow-progress-report.md` 的 #1144 进度行） |
-| `robot-universal-quality-gate-trigger` 目标是 CodeArts、handler 仍 `// TODO` | `community-robots/robot-universal-quality-gate-trigger/`（`codecheck_signer.go` + `robot.go` 两个 handler）、`agent-development-specification/projects/docs/07-services/robot.md` L38 / L257 |
 | `ci_successful` / `ci_failed` 的**消费方**（生产方不可见） | `agent-development-specification/projects/docs/07-services/software-package.md` L100、`software-package-all.md` L119 / L160（gateway 监听 PR label 推进状态机） |
 | CodeArts 迁移方向 | `community-robots/robot-universal-quality-gate-trigger/`（`config.go` 指向 CodeArts 流水线；两个 handler 仍为 `// TODO`） |
 | 净室白名单 resolver 无监控 | `jenkins-log-scanner` 的 `vpc_ip_whitelist_auto_resolver`（ns `infra-security` CronJob） |
