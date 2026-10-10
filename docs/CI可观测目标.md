@@ -20,7 +20,7 @@
 
 | | **线 A：参与型社区** | **线 B：主导型社区** |
 | --- | --- | --- |
-| **代表** | vllm-ascend、MindSpore 等 | openEuler、src-openeuler、openeuler-test |
+| **代表** | vllm（`vllm-ascend` / `vllm-project`）、sglang（`sgl-project`）、verl、triton（`triton-lang`）等 | **MindSpore**、openEuler、src-openeuler、openeuler-test |
 | **代码托管** | GitHub | **GitCode** |
 | **CI 引擎** | GitHub Actions + **ARC 自托管 runner** | **Jenkins 门禁**（`community_check_v2`）；少数仓库已迁 GitCode Actions / 华为云 CodeArts |
 | **提交触发** | `on: pull_request` | webhook → ci-bot → Jenkins job |
@@ -220,6 +220,12 @@ CI 是把代码变成"能合入的结论"的生产线。它的"可用性"和微�
 | 状态回写 | ci-bot 标签 `ci_processing` → `ci_successful` / `ci_failed` |
 | **失败出口** | **人工深入 Jenkins 构建控制台** |
 | 误报标记 | `/ci_mistake build_no <mistake_type> <ci_mistake_stage>` |
+
+> ⚠️ **这张表只覆盖 openEuler / src-openeuler 一侧。** 线 B 里 **MindSpore 是另一套实现**——独立 Jenkins 实例
+> （`mindspore-jenkins`，源码仓 `opensourceways/mindspore-jenkins`，ArgoCD app `mindspore-jenkins-master`；
+> 日志入口 `build-log.mindspore.cn`），门禁 job、检查项、状态回写方式都不一定与 `community_check_v2` 相同。
+> **这不是细节**：线 B 内部**至少有两个不同的门禁实现**，所以判定对象必须是"**一次门禁**"而不是"一次 Jenkins build"
+> （§2.3 末的同一条结论）。MindSpore 侧的具体链路本文未展开，待补。
 
 **检查项清单**（这是线 B 的"阶段"维度，等价于线 A 的 C4 阶段）：
 
