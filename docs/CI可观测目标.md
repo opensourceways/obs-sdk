@@ -288,19 +288,7 @@ CI 是把代码变成"能合入的结论"的生产线。它的"可用性"和微�
 
 > `openeuler_cicd_dashboard` 的细节来自公开索引，**未能直接抓取**（`raw.gitcode.com` 403、`api.gitcode.com` 401 需 token），引用前建议核一遍。
 
-**但这四件都是「人去看（且事后批处理）的看板」，不是「会自己叫的监控」**——
-它们解决的是"回头查"，本次诉求是"**出问题先被发现、并派到对的人**"，方向对不上：
-门禁侧既没有作业层指标（没有脚本取 build 的 `result` / `duration` / `queue`），
-也没有任何告警与大盘指向它，最底层的一条是**门禁 Jenkins 所在集群 `openeuler-ci-cn4-cluster` 连监控栈都没有**
-（`infra-community/helm-charts/openeuler-ci-cn4-cluster/` 只有 `jenkins.yaml` + `project.yaml`），
-Jenkins 自身也没开 `/metrics`、没有任何 Prometheus 抓过它（`infra-common/common-applications/control/jenkins/deployment.yaml`）。
-
-**另有一个机制与事故根因链直接相关，值得一并纳入：**
-
-**净室构建出站 IP 白名单** = `jenkins-log-scanner` 的 `vpc_ip_whitelist_auto_resolver`
-（subfinder + 并发 DNS → 华为云 VPC 安全组地址组），按社区部署为 ns `infra-security` 的 CronJob（每小时），**无任何监控**。
-它的语义是**只增不减**——"白名单里只有旧 IP"这种现象只有两种可能：**要么域名不在它的域名清单里，要么它自己没跑成而无人知道**。
-两种都能被一条最朴素的"resolver 最后成功时间"gauge 覆盖，而现在一条都没有。**这是为什么那次只能人肉发现。**
+**但这四件都是「人去看（且事后批处理）的看板」，不是「会自己叫的监控」。**
 
 ### 2.4 目标指标：最小必须集 J1–J5
 
@@ -444,7 +432,7 @@ GitCode PR
 | 3 | **线 B · `repo` 是否进 metrics label**（§2.4 末） | 建议**不进**：metrics 只到 `org` / `check_type` / `result`，`repo` 级下钻交给看板。定了这条，线 B 的 metrics 与看板分工就清楚了 | 待定 |
 | 4 | **线 B · 指标落在哪**（§4 末） | 门禁集群 `openeuler-ci-cn4-cluster` 无监控栈，三种选择：复用 ns `infra-monitoring` / 给门禁集群配 Agent / 先只在门禁侧做轻量 exporter。**这是线 B 的前置问题** | 基础设施组 |
 | 5 | **线 B · `no_result` 的分母从哪来**（§2.4） | 需要确认"**谁写出 `ci_processing` / `ci_successful` / `ci_failed` 标签**"——这个生产方**不在本仓可见范围**（§2.2）。定位到它之前，`no_result` 只能靠 `/ci_mistake build_exception` 反推 | 待定 |
-| 6 | **线 B · 门禁的无条件 gauge 埋在哪**（J5） | 连带把"净室白名单 resolver 最后成功时间"这类当前完全不可见的机制一并纳入（§2.3 末） | 待定 |
+| 6 | **线 B · 门禁的无条件 gauge 埋在哪**（J5） | 门禁侧目前连"链路还活着"的常驻信号都没有；先定这个 gauge 落在哪（门禁 exporter / 事件侧），再谈 J1–J4 | 待定 |
 | 7 | **本文的落点拆解**：线 A 落在 `ascend-ci-deployment`（监控 / 告警 / 自愈）、`runner-container-hooks`（错误信息）、`ascend-runner-onboarding`（自动化）、`ascend-gha-runners/arc-fedsched`（调度指标）；**线 B 暂无对应仓** | 与 #2080 的工作量估算（约 15~20 人天，**只覆盖线 A**）分开排期，本文不做拆分 | 基础设施组 |
 | 8 | **大盘是否统一入口**（§4 末） | 与 #668「社区服务状态页的实现形态」一并定；两者都是"视图层入口"问题 | 运维 |
 | 9 | ~~**线 B 要不要"构建机利用率"这类指标**（§0.1 / §2.4）~~ | **本期不做**（本文目标不含资源利用率，见文首声明）。线 B 的资源信号用 J1 的排队段就够；**"构建机到底够不够用"这件事靠排队时长变长就能发现**，不需要利用率这个派生数。若将来确实要以容量为专题立项，再补"执行器占用 / 排队"的上限类指标（不是利用率下限）——**但那不在本期** | — |
@@ -484,5 +472,4 @@ GitCode PR
 | 线 B 侧无故障归因资料 | `general/昇腾失败原因分析/`（全部针对 GitHub Actions + NPU） |
 | 缺结果性判断 | [backlog#1938](https://github.com/opensourceways/backlog/issues/1938) 最后一条评论 |
 | `ci_successful` / `ci_failed` 的**消费方**（生产方不可见） | `agent-development-specification/projects/docs/07-services/software-package.md` L100、`software-package-all.md` L119 / L160（gateway 监听 PR label 推进状态机） |
-| 净室白名单 resolver 无监控 | `jenkins-log-scanner` 的 `vpc_ip_whitelist_auto_resolver`（ns `infra-security` CronJob） |
 | 线 B 调研全文 | [backlog#2080 评论](https://github.com/opensourceways/backlog/issues/2080#issuecomment-6081591152) |
