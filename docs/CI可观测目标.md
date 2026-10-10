@@ -288,18 +288,12 @@ CI 是把代码变成"能合入的结论"的生产线。它的"可用性"和微�
 
 > `openeuler_cicd_dashboard` 的细节来自公开索引，**未能直接抓取**（`raw.gitcode.com` 403、`api.gitcode.com` 401 需 token），引用前建议核一遍。
 
-**但这四件都是「人去看的看板」，不是「会自己叫的监控」。** 具体空白：
-
-| # | 空白 | 实测依据 |
-| --- | --- | --- |
-| **B-1** | **作业层指标完全缺失**——没有任何脚本取 build 的 `result` / `duration` / `queue`。本地仅有的两个 Jenkins 采集脚本只服务于**镜像-源码仓映射**，无成败、无耗时、无排队 | `infrastructure/scripts/fetch_jenkins.py`（只取 `lastBuild[timestamp]`）、`scan_jenkins_logs.py`（只取 `lastSuccessfulBuild[number]` + `consoleText`） |
-| **B-2** | **Jenkins 从未被监控**——没装 prometheus 插件，任何 Prometheus 都没抓它 | `infra-common/common-applications/control/jenkins/deployment.yaml`；`openeuler-cn-north4-jenkins/monitor-agent/prometheus.yml` 的 scrape job 只有 `kube-state-metrics` / `prometheus-agent` / `services` |
-| **B-3** | **门禁 Jenkins 所在集群零监控栈**——六条清单里没有 Prometheus / Grafana / exporter / 告警任何一件 | `infra-community/helm-charts/openeuler-ci-cn4-cluster/`（仅 `jenkins.yaml` + `project.yaml`；清单 = jenkins、jenkins-data-scan-all、oauth2-proxy、rsync-client、rsync-server + build-02 ArgoCD） |
-| **B-4** | **无一条告警面向门禁**——现有 31 条全部面向 ARC / GitHub | `ascend-ci-deployment/monitoring/config-for-infra-cn4-x86-common-cluster/prometheus-rules.yaml` |
-| **B-5** | **无门禁大盘**——现有大盘是 ARC 官方大盘、robot-review 健康度、社区健康度 | `helm-chart-value-osw/common/grafana/prod/values-dashboards.yaml` |
-| **B-6** | **无归因 / 自愈 / SOP**——失败分类、"用户可自助"提示、SOP 全部为零（线 A 侧已有 32 桶归因 + 三档设计） | `general/昇腾失败原因分析/`（**全部针对 GitHub Actions + NPU，没有一条针对 GitCode 门禁**） |
-| **B-7** | **「门禁大面积失败」检测能力为空** | backlog#1938 最后一条评论 |
-| **B-8** | **构建侧容量完全不可见**——门禁要按 x86-64 / aarch64 **双架构构建 RPM**（另有净室环境），但构建机数量、执行器占用、排队长度**一个数都没有**；"构建机不够用了"只能靠用户报障 | B-3：门禁集群连 node-exporter / kube-state-metrics 都没有 |
+**但这四件都是「人去看（且事后批处理）的看板」，不是「会自己叫的监控」**——
+它们解决的是"回头查"，本次诉求是"**出问题先被发现、并派到对的人**"，方向对不上：
+门禁侧既没有作业层指标（没有脚本取 build 的 `result` / `duration` / `queue`），
+也没有任何告警与大盘指向它，最底层的一条是**门禁 Jenkins 所在集群 `openeuler-ci-cn4-cluster` 连监控栈都没有**
+（`infra-community/helm-charts/openeuler-ci-cn4-cluster/` 只有 `jenkins.yaml` + `project.yaml`），
+Jenkins 自身也没开 `/metrics`、没有任何 Prometheus 抓过它（`infra-common/common-applications/control/jenkins/deployment.yaml`）。
 
 **另有一个机制与事故根因链直接相关，值得一并纳入：**
 
@@ -347,8 +341,8 @@ rate(门禁结果[15m]) 按 result=failure / 总体      ── 跌破基线即�
 **两个取数盲区（对应线 A §1.3 的"两段排队"）：**
 
 1. **`no_result` 需要一个"预期有结果"的分母。** 光看出 `no_result` 计数不够——还得知道"本该有多少次门禁"。
-   这依赖 §2.2 那条断掉的链路（谁能写出 `ci_processing` 标签，谁就更接近这个分母）。
-2. **排队段可能取不到。** 如果 Jenkins 侧不暴露 queue 时间（B-2 里它连 `/metrics` 都没开），
+   这依赖"谁写出 `ci_processing` 标签"（§2.2：该生产方不在本仓可见范围）——谁写它，谁就更接近这个分母。
+2. **排队段可能取不到。** 如果 Jenkins 侧不暴露 queue 时间（它连 `/metrics` 都没开，见 §2.3），
    J1 的"排队段"只能退化为"从 webhook 收到事件到 job 开始"——**需要先确认事件时间戳在链路哪一环可查**。
 
 **一个必须提前定的高基数问题**：`repo` 能不能当 label？
@@ -429,7 +423,7 @@ GitCode PR
 | --- | --- | --- |
 | **对象** | 26 个微服务仓 | CI 平台（**线 A**：ARC 资源池 + 调度 + 周边工具链；**线 B（本次）**：只含 openEuler 的 GitCode Jenkins 门禁 + 误报体系，不含 CodeArts 那一支） |
 | **埋点位置** | obs-sdk（应用内） | 集群侧 / 门禁侧（Prometheus Agent / 拨测 / ARC / 未来的 dispatcher / 门禁 adapter） |
-| **数据落地** | 本方案**新建**：`infra-cn4-x86-common-cluster` · ns `infra-monitoring-community` | **线 A**：CI 自己已有，同集群 · ns **`infra-monitoring`**；**线 B**：**目前无处可落**（B-3：门禁集群零监控栈） |
+| **数据落地** | 本方案**新建**：`infra-cn4-x86-common-cluster` · ns `infra-monitoring-community` | **线 A**：CI 自己已有，同集群 · ns **`infra-monitoring`**；**线 B**：**目前无处可落**（门禁集群零监控栈，见 §2.3） |
 | **出口对象** | community 用户（社区服务状态页） | CI 使用者（GitHub / GitCode 侧）+ 运维 |
 
 **线 A 的两套监控栈在同一集群、不同 ns，且已明确决定不合并**（技术设计 §4.8.1 给了三条理由：ArgoCD 共管打架、资源块的 Prometheus 占着共享 ELB、不想碰它的 Operator 与 CRD）。
@@ -484,13 +478,11 @@ GitCode PR
 | `openeuler_cicd_dashboard` 数据模型与指标（**来自公开索引，未直接抓取**） | GitCode `openeuler_cicd_dashboard`（`raw.gitcode.com` 403 / `api.gitcode.com` 401，引用前请复核） |
 | `PipeLine_DashBoard` | gitcode.com/yejianping/PipeLine_DashBoard |
 | `jenkins-log-viewer` 形态与"不接触 GitCode" | [backlog#1144](https://github.com/opensourceways/backlog/issues/1144) 需求分析与架构设计说明书 |
-| B-1：采集脚本只取时间戳与日志 | `infrastructure/scripts/fetch_jenkins.py`、`infrastructure/scripts/scan_jenkins_logs.py` |
-| B-2：Jenkins 无 prometheus 插件、Agent 不抓 Jenkins | `infra-common/common-applications/control/jenkins/deployment.yaml`、`.../openeuler-cn-north4-jenkins/monitor-agent/prometheus.yml` |
-| B-3：门禁集群零监控栈 | `infra-community/helm-charts/openeuler-ci-cn4-cluster/`（`jenkins.yaml` + `project.yaml`） |
-| B-4：31 条告警全无线 B 指向 | 同线 A 的 `prometheus-rules.yaml` |
-| B-5：无门禁大盘 | `helm-chart-value-osw/common/grafana/prod/values-dashboards.yaml` |
-| B-6：无线 B 侧故障归因资料 | `general/昇腾失败原因分析/`（全部针对 GitHub Actions + NPU） |
-| B-7：缺结果性判断 | [backlog#1938](https://github.com/opensourceways/backlog/issues/1938) 最后一条评论 |
+| 门禁侧无作业层采集：本地两个 Jenkins 脚本只取时间戳与日志 | `infrastructure/scripts/fetch_jenkins.py`、`infrastructure/scripts/scan_jenkins_logs.py` |
+| 门禁侧无监控接入：Jenkins 无 prometheus 插件、Agent 不抓 Jenkins、门禁集群零监控栈 | `infra-common/common-applications/control/jenkins/deployment.yaml`、`.../openeuler-cn-north4-jenkins/monitor-agent/prometheus.yml`、`infra-community/helm-charts/openeuler-ci-cn4-cluster/`（`jenkins.yaml` + `project.yaml`） |
+| 告警 31 条全无线 B 指向；大盘里无门禁大盘 | 同线 A 的 `prometheus-rules.yaml`；`helm-chart-value-osw/common/grafana/prod/values-dashboards.yaml` |
+| 线 B 侧无故障归因资料 | `general/昇腾失败原因分析/`（全部针对 GitHub Actions + NPU） |
+| 缺结果性判断 | [backlog#1938](https://github.com/opensourceways/backlog/issues/1938) 最后一条评论 |
 | `ci_successful` / `ci_failed` 的**消费方**（生产方不可见） | `agent-development-specification/projects/docs/07-services/software-package.md` L100、`software-package-all.md` L119 / L160（gateway 监听 PR label 推进状态机） |
 | 净室白名单 resolver 无监控 | `jenkins-log-scanner` 的 `vpc_ip_whitelist_auto_resolver`（ns `infra-security` CronJob） |
 | 线 B 调研全文 | [backlog#2080 评论](https://github.com/opensourceways/backlog/issues/2080#issuecomment-6081591152) |
