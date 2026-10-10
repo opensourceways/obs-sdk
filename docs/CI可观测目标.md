@@ -20,16 +20,20 @@
 
 | | **线 A：参与型社区** | **线 B：主导型社区** |
 | --- | --- | --- |
-| **代表** | vllm（`vllm-ascend` / `vllm-project`）、sglang（`sgl-project`）、verl、triton（`triton-lang`）等 | **MindSpore**、openEuler、src-openeuler、openeuler-test |
+| **代表** | vllm（`vllm-ascend` / `vllm-project`）、sglang（`sgl-project`）、verl、triton（`triton-lang`）等 | openEuler（+ src-openeuler / openeuler-test）、**openUBMC、CANN、MindSpore、Ascend** 等 |
 | **代码托管** | GitHub | **GitCode** |
-| **CI 引擎** | GitHub Actions + **ARC 自托管 runner** | **Jenkins 门禁**（`community_check_v2`）；少数仓库已迁 GitCode Actions / 华为云 CodeArts |
-| **提交触发** | `on: pull_request` | webhook → ci-bot → Jenkins job |
-| **结果回写** | GitHub Check / commit status | **ci-bot 标签** `ci_processing` → `ci_successful` / `ci_failed` |
+| **CI 引擎** | GitHub Actions + **ARC 自托管 runner** | **两代并存**：**openEuler** 仍用 **Jenkins 门禁**（`community_check_v2`）；**其余全部**已迁 **openlibing + 华为云 CodeArts** |
+| **实际执行载体** | K8s（ARC runner pod） | openEuler：**Jenkins**（不在 K8s 上）；**其余：Argo Workflow（跑在 K8s 上）**——CodeArts 只做触发与 UI |
+| **提交触发** | `on: pull_request` | openEuler：webhook → ci-bot → Jenkins job；其余：CodeArts 流水线 |
+| **结果回写** | GitHub Check / commit status | openEuler：**ci-bot 标签** `ci_processing` → `ci_successful` / `ci_failed`；其余：各社区自己的聚合脚本（如 Ascend 蓝区 `monitor.py` → PR 评论表格） |
 | **稀缺资源** | **NPU 卡**（贵、按卡时计价） | **CPU 构建机 / 净室环境**（数量与并发槽位） |
 | **用户最痛的** | **等太久**（拿不到卡） | **结果不可信、看不到为什么挂** |
 | **运维最痛的** | 卡不够用 **+ 卡被占着不用** | **大面积集中失败没人先发现** |
 | **资源信号的方向** | **下限**——利用率 > 30%，防「占着不用」 | **上限**——排队时长 / 队列深度，防「不够用」；**利用率低不是问题** |
 | **已有验收标准** | #1874：排队 P95 < 10 min、卡时利用率 > 30% | **无**（#1874 / #2080 现有指标全是线 A 口径） |
+
+> **线 B 一栏把两代都写出来了（事实如此），但本文的目标与指标只覆盖 openEuler 那一代 Jenkins 门禁**，
+> openlibing + CodeArts → Argo Workflow 那一代**本次不做**（理由见 §2 开头）。
 
 ### 0.1 为什么不能互相套用
 
@@ -186,7 +190,19 @@ CI 是把代码变成"能合入的结论"的生产线。它的"可用性"和微�
 
 ---
 
-## 2. 线 B：主导型社区（GitCode + Jenkins 门禁）
+## 2. 线 B：主导型社区——本次只做 openEuler 这种 Jenkins CI
+
+> **范围声明**：主导型社区内部**两代并存**（§0 表格已并列写出），但**本次只做 openEuler 这一种 Jenkins CI 的可观测**——
+> 它是主导型社区里**唯一还不在 K8s 上**的 CI，也是**唯一没有任何现成可观测手段**的一支。
+>
+> 线 B 的其余社区（**openUBMC、CANN、MindSpore、Ascend** 等）已全部迁到 **openlibing + 华为云 CodeArts**，
+> 其实际执行载体是 **Argo Workflow（跑在 K8s 上）**，CodeArts 只做触发与 UI
+> （`codearts-workflow-image` 容器内用 `convertorv2` 把流水线 YAML 转成 Argo Workflow，再 `argo submit` 到目标集群）。
+> **这一支本次不做**——它和线 A 一样落在 K8s 上，可观测手段更接近线 A，不是本次要补的洞。
+> 因此**下面 §2.2 起的所有链路细节与 J1–J5 指标，都只针对旧 Jenkins 门禁**，不要套到 CodeArts 那一支上。
+>
+> 依据：`agent-development-specification/projects/docs/07-services/ci-all.md`
+> （L77「**CodeArts 流水线接管后，新业务不再加 Jenkins**」；L78 / L135：`codearts-ci-config` 覆盖**70+ 仓**；L86：CodeArts → Argo Workflow 的转换）。
 
 ### 2.1 目标：线 B 要回答的四个问题
 
@@ -221,11 +237,13 @@ CI 是把代码变成"能合入的结论"的生产线。它的"可用性"和微�
 | **失败出口** | **人工深入 Jenkins 构建控制台** |
 | 误报标记 | `/ci_mistake build_no <mistake_type> <ci_mistake_stage>` |
 
-> ⚠️ **这张表只覆盖 openEuler / src-openeuler 一侧。** 线 B 里 **MindSpore 是另一套实现**——独立 Jenkins 实例
-> （`mindspore-jenkins`，源码仓 `opensourceways/mindspore-jenkins`，ArgoCD app `mindspore-jenkins-master`；
-> 日志入口 `build-log.mindspore.cn`），门禁 job、检查项、状态回写方式都不一定与 `community_check_v2` 相同。
-> **这不是细节**：线 B 内部**至少有两个不同的门禁实现**，所以判定对象必须是"**一次门禁**"而不是"一次 Jenkins build"
-> （§2.3 末的同一条结论）。MindSpore 侧的具体链路本文未展开，待补。
+> ⚠️ **这张表只覆盖 openEuler / src-openeuler 的 Jenkins 门禁，也就是本次唯一要做的这一支。**
+> 它不覆盖：① 主导型社区里走 **openlibing + CodeArts → Argo Workflow** 的那些（**openUBMC / CANN / MindSpore / Ascend** 等，本次不做）；
+> ② **MindSpore 历史上残留的独立 Jenkins 实例**（`mindspore-jenkins`，ArgoCD app `mindspore-jenkins-master`，日志入口 `build-log.mindspore.cn`），
+> 它与 `community_check_v2` 不是同一套，**本次同样不做**——只在盘点制品时作为 `jenkins-log-viewer` 的宿主出现（§2.3）。
+>
+> **但这条边界有个直接结论**：线 B 的门禁实现**不止一个**，所以**判定对象必须是"一次 PR 门禁"而不是"一次 Jenkins build"**——
+> 否则将来把这一支的指标搬到 CodeArts 那一支时，口径会因为"一次构建"的定义不同而对不上（§2.3 末的同一条结论）。
 
 **检查项清单**（这是线 B 的"阶段"维度，等价于线 A 的 C4 阶段）：
 
@@ -284,7 +302,15 @@ GitCode PR 事件 ─► robot-universal-hook-delivery ─► Kafka metadata_web
 > **可见的迁移方向要修正一个说法**：不是"Jenkins → GitCode Actions"，而是 **Jenkins → 华为云 CodeArts**
 > （`robot-universal-quality-gate-trigger` 的设计目标就是触发 CodeArts 流水线，且业务逻辑尚未实现）。
 > 代码托管的迁移方向才是 Gitee / AtomGit → GitCode。
-> **这条决定线 B 的指标不能焊死在 Jenkins 上**——判定对象应该是"**一次门禁**"，而不是"一次 Jenkins build"。
+>
+> **这条迁移已经走完大半**——除 openEuler 外的其余主导型社区（openUBMC / CANN / MindSpore / Ascend 等）
+> 都已在 **openlibing + CodeArts** 上，**只有 openEuler 还留在旧 Jenkins**。
+> 依据：`agent-development-specification/projects/docs/07-services/ci-all.md` L77
+> 「**CodeArts 流水线接管后，新业务不再加 Jenkins**」；承接这一支的是 `codearts-ci-config`（**70+ 仓**的中心化配置与脚本归档）
+> 与 `codearts-workflow-image`（容器内 `convertorv2` 转 Argo Workflow → `argo submit` 到 K8s）。
+>
+> **这条决定线 B 的指标不能焊死在 Jenkins 上**——判定对象应该是"**一次门禁**"，而不是"一次 Jenkins build"；
+> 但**本次的落点就是旧 Jenkins 这一支**（§2 范围声明），指标先按 Jenkins 能给的信号落地。
 
 ### 2.4 目标指标：最小必须集 J1–J5
 
@@ -403,7 +429,7 @@ GitCode PR
 
 | | 微服务可观测 | CI 可观测（本文） |
 | --- | --- | --- |
-| **对象** | 26 个微服务仓 | CI 平台（**线 A**：ARC 资源池 + 调度 + 周边工具链；**线 B**：GitCode 门禁 + Jenkins + 误报体系） |
+| **对象** | 26 个微服务仓 | CI 平台（**线 A**：ARC 资源池 + 调度 + 周边工具链；**线 B（本次）**：只含 openEuler 的 GitCode Jenkins 门禁 + 误报体系，不含 CodeArts 那一支） |
 | **埋点位置** | obs-sdk（应用内） | 集群侧 / 门禁侧（Prometheus Agent / 拨测 / ARC / 未来的 dispatcher / 门禁 adapter） |
 | **数据落地** | 本方案**新建**：`infra-cn4-x86-common-cluster` · ns `infra-monitoring-community` | **线 A**：CI 自己已有，同集群 · ns **`infra-monitoring`**；**线 B**：**目前无处可落**（B-3：门禁集群零监控栈） |
 | **出口对象** | community 用户（社区服务状态页） | CI 使用者（GitHub / GitCode 侧）+ 运维 |
@@ -466,6 +492,10 @@ GitCode PR
 | B-4：31 条告警全无线 B 指向 | 同线 A 的 `prometheus-rules.yaml` |
 | B-5：无门禁大盘 | `helm-chart-value-osw/common/grafana/prod/values-dashboards.yaml` |
 | B-6：无线 B 侧故障归因资料 | `general/昇腾失败原因分析/`（全部针对 GitHub Actions + NPU） |
+| **两代并存**：除 openEuler 外其余主导型社区已迁 CodeArts，新业务不再加 Jenkins | `agent-development-specification/projects/docs/07-services/ci-all.md` L77 |
+| CodeArts 由 `codearts-ci-config`（**70+ 仓**配置与脚本归档）+ `codearts-workflow-image` 承载 | 同上 L78、L135 |
+| CodeArts 的实际执行载体是 Argo Workflow（`convertorv2` 转 YAML → `argo submit` 到 K8s） | 同上 L86 |
+| Ascend 蓝区走 Gitee PR + CodeArts API + Majun + OBS，PR 门禁评论由聚合脚本产出 HTML 表格 | 同上 L79、L200 |
 | B-7：缺结果性判断 | [backlog#1938](https://github.com/opensourceways/backlog/issues/1938) 最后一条评论 |
 | webhook 链路、机器人不读 Jenkins 结果 | `community-robots/` 全仓 grep `jenkins` 零命中；`robot-universal-hook-delivery` → Kafka `metadata_webhook_gitcode` → `robot-hook-dispatcher` → `robot-universal-access` |
 | CodeArts 迁移方向 | `community-robots/robot-universal-quality-gate-trigger/`（`config.go` 指向 CodeArts 流水线；两个 handler 仍为 `// TODO`） |
