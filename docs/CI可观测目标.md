@@ -25,7 +25,7 @@
 
 | | **线 A：参与型社区** | **线 B：主导型社区** |
 | --- | --- | --- |
-| **代表** | vllm（`vllm-ascend` / `vllm-project`）、sglang（`sgl-project`）、verl、triton（`triton-lang`）等 | openEuler（+ src-openeuler / openeuler-test）、**openUBMC、CANN、MindSpore、Ascend** 等 |
+| **代表** | vllm（`vllm-ascend` / `vllm-project`）、sglang（`sgl-project`）、verl、triton（`triton-lang`）等 | openEuler（+ src-openeuler）、**openUBMC、CANN、MindSpore、Ascend** 等 |
 | **代码托管** | GitHub | **GitCode** |
 | **CI 引擎** | GitHub Actions + **ARC 自托管 runner** | **两代并存**：**openEuler** 仍用 **Jenkins 门禁**（`community_check_v2`）；**其余全部**已迁 **openlibing + 华为云 CodeArts** |
 | **实际执行载体** | K8s（ARC runner pod） | openEuler：**Jenkins**（不在 K8s 上）；**其余：Argo Workflow（跑在 K8s 上）**——CodeArts 只做触发与 UI |
@@ -252,7 +252,7 @@ CI 是把代码变成"能合入的结论"的生产线。它的"可用性"和微�
 
 | 环节 | 实体 |
 | --- | --- |
-| 托管 | GitCode（openEuler / src-openeuler / openeuler-test 三个 org） |
+| 托管 | GitCode（openEuler / src-openeuler 两个 org） |
 | 门禁入口 | Jenkins `https://openeulerjenkins.osinfra.cn/job/Infra/job/community_check_v2/` |
 | 门禁代码 | `openeuler/openeuler-jenkins`（按仓四类 job：`trigger` / `x86-64` / `aarch64` / `comment`） |
 | 状态回写 | ci-bot 标签 `ci_processing` → `ci_successful` / `ci_failed` |
