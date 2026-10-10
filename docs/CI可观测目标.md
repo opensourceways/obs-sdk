@@ -245,9 +245,6 @@ CI 是把代码变成"能合入的结论"的生产线。它的"可用性"和微�
 > 而现有体系对"结果没回来"和"结果回来了且通过"**没有任何区分**。
 > Q4 的来源：backlog#1938 最后一条评论的结论原话——「**缺少根据最终结果性判断，比如出现大批量集中失败**」。
 
-**核心判断**：**线 B 的重心不在"快不快"，而在"这个结论是不是真的、有没有整体性崩塌"。**
-它要防的是**静默**——门禁集体失败而没人知道，比门禁慢几个小时严重得多。
-
 ### 2.2 链路与判定点
 
 | 环节 | 实体 |
@@ -263,9 +260,6 @@ CI 是把代码变成"能合入的结论"的生产线。它的"可用性"和微�
 > 它不覆盖：① 主导型社区里走 **openlibing + CodeArts → Argo Workflow** 的那些（**openUBMC / CANN / MindSpore / Ascend** 等，本次不做）；
 > ② **MindSpore 历史上残留的独立 Jenkins 实例**（`mindspore-jenkins`，ArgoCD app `mindspore-jenkins-master`，日志入口 `build-log.mindspore.cn`），
 > 它与 `community_check_v2` 不是同一套，**本次同样不做**——只在盘点制品时作为 `jenkins-log-viewer` 的宿主出现（§2.3）。
->
-> **但这条边界有个直接结论**：线 B 的门禁实现**不止一个**，所以**判定对象必须是"一次 PR 门禁"而不是"一次 Jenkins build"**——
-> 否则将来把这一支的指标搬到 CodeArts 那一支时，口径会因为"一次构建"的定义不同而对不上（§2.3 末的同一条结论）。
 
 **检查项清单**（这是线 B 的"阶段"维度，等价于线 A 的 C4 阶段）：
 
@@ -313,19 +307,6 @@ CI 是把代码变成"能合入的结论"的生产线。它的"可用性"和微�
 （subfinder + 并发 DNS → 华为云 VPC 安全组地址组），按社区部署为 ns `infra-security` 的 CronJob（每小时），**无任何监控**。
 它的语义是**只增不减**——"白名单里只有旧 IP"这种现象只有两种可能：**要么域名不在它的域名清单里，要么它自己没跑成而无人知道**。
 两种都能被一条最朴素的"resolver 最后成功时间"gauge 覆盖，而现在一条都没有。**这是为什么那次只能人肉发现。**
-
-> **可见的迁移方向要修正一个说法**：不是"Jenkins → GitCode Actions"，而是 **Jenkins → 华为云 CodeArts**
-> （`robot-universal-quality-gate-trigger` 的设计目标就是触发 CodeArts 流水线，且业务逻辑尚未实现）。
-> 代码托管的迁移方向才是 Gitee / AtomGit → GitCode。
->
-> **这条迁移已经走完大半**——除 openEuler 外的其余主导型社区（openUBMC / CANN / MindSpore / Ascend 等）
-> 都已在 **openlibing + CodeArts** 上，**只有 openEuler 还留在旧 Jenkins**。
-> 依据：`agent-development-specification/projects/docs/07-services/ci-all.md` L77
-> 「**CodeArts 流水线接管后，新业务不再加 Jenkins**」；承接这一支的是 `codearts-ci-config`（**70+ 仓**的中心化配置与脚本归档）
-> 与 `codearts-workflow-image`（容器内 `convertorv2` 转 Argo Workflow → `argo submit` 到 K8s）。
->
-> **这条决定线 B 的指标不能焊死在 Jenkins 上**——判定对象应该是"**一次门禁**"，而不是"一次 Jenkins build"；
-> 但**本次的落点就是旧 Jenkins 这一支**（§2 范围声明），指标先按 Jenkins 能给的信号落地。
 
 ### 2.4 目标指标：最小必须集 J1–J5
 
@@ -509,12 +490,7 @@ GitCode PR
 | B-4：31 条告警全无线 B 指向 | 同线 A 的 `prometheus-rules.yaml` |
 | B-5：无门禁大盘 | `helm-chart-value-osw/common/grafana/prod/values-dashboards.yaml` |
 | B-6：无线 B 侧故障归因资料 | `general/昇腾失败原因分析/`（全部针对 GitHub Actions + NPU） |
-| **两代并存**：除 openEuler 外其余主导型社区已迁 CodeArts，新业务不再加 Jenkins | `agent-development-specification/projects/docs/07-services/ci-all.md` L77 |
-| CodeArts 由 `codearts-ci-config`（**70+ 仓**配置与脚本归档）+ `codearts-workflow-image` 承载 | 同上 L78、L135 |
-| CodeArts 的实际执行载体是 Argo Workflow（`convertorv2` 转 YAML → `argo submit` 到 K8s） | 同上 L86 |
-| Ascend 蓝区走 Gitee PR + CodeArts API + Majun + OBS，PR 门禁评论由聚合脚本产出 HTML 表格 | 同上 L79、L200 |
 | B-7：缺结果性判断 | [backlog#1938](https://github.com/opensourceways/backlog/issues/1938) 最后一条评论 |
 | `ci_successful` / `ci_failed` 的**消费方**（生产方不可见） | `agent-development-specification/projects/docs/07-services/software-package.md` L100、`software-package-all.md` L119 / L160（gateway 监听 PR label 推进状态机） |
-| CodeArts 迁移方向 | `community-robots/robot-universal-quality-gate-trigger/`（`config.go` 指向 CodeArts 流水线；两个 handler 仍为 `// TODO`） |
 | 净室白名单 resolver 无监控 | `jenkins-log-scanner` 的 `vpc_ip_whitelist_auto_resolver`（ns `infra-security` CronJob） |
 | 线 B 调研全文 | [backlog#2080 评论](https://github.com/opensourceways/backlog/issues/2080#issuecomment-6081591152) |
