@@ -1,8 +1,7 @@
 # CI 可观测目标（评审稿）
 
 > **需求来源**：[backlog#1874](https://github.com/opensourceways/backlog/issues/1874)（26H2 CI 工作专项 · 里程碑 2）、
-> [backlog#2080](https://github.com/opensourceways/backlog/issues/2080)（CI 质量问题可自助程度提升）、
-> [backlog#296](https://github.com/opensourceways/backlog/issues/296)（让 ARC 失败的日志更加明确）
+> [backlog#2080](https://github.com/opensourceways/backlog/issues/2080)（CI 质量问题可自助程度提升）
 >
 > **姊妹篇**：[微服务可观测目标](微服务可观测目标.md)——那份管 26 个微服务，本文管 CI 平台自身。
 > 两份**共用同一套判定思路**（分层 / 最小必须集 / 「未知」是一等状态），但**对象、埋点位置、出口**都不同，不要互相套用。
@@ -140,7 +139,7 @@ CI 是把代码变成"能合入的结论"的生产线。它的"可用性"和微�
 2. **没有下钻维度。** 现有告警的 label 是 `cluster` / `namespace` / `pod`，这是**运维视角**（哪个集群坏了）。
    用户问的是"**我这个仓库为什么慢**"，需要 `repo` / `runs-on` 规格 / 触发者这些维度，现在一个都没有。
 3. **出口是运维，不是用户。** 告警路由到的是**逐个列出的运维个人邮箱**（`alertmanager-config-secret.yaml`），
-   没有任何面向社区用户的出口。用户唯一的感知途径是"job 一直不开始"。这正是 #2080 / #296 要改的。
+   没有任何面向社区用户的出口。用户唯一的感知途径是"job 一直不开始"。这正是 #2080 要改的。
 
 ### 1.3 目标指标：本期最小必须集 C1 / C2 / C4 / C5
 
@@ -362,9 +361,6 @@ rate(门禁结果[15m]) 按 result=failure / 总体      ── 跌破基线即�
 | **数据落地** | 本方案**新建**：`infra-cn4-x86-common-cluster` · ns `infra-monitoring-community` | **线 A**：CI 自己已有，同集群 · ns **`infra-monitoring`**；**线 B**：**目前无处可落**（门禁集群零监控栈，见 §2.3） |
 | **出口对象** | community 用户（社区服务状态页） | CI 使用者（GitHub / GitCode 侧）+ 运维 |
 
-**线 A 的两套监控栈在同一集群、不同 ns，且已明确决定不合并**（技术设计 §4.8.1 给了三条理由：ArgoCD 共管打架、资源块的 Prometheus 占着共享 ELB、不想碰它的 Operator 与 CRD）。
-所以**"中心要不要并"这个问题已经有答案了**，本文不重开；**剩下的真问题是「大盘要不要统一成一个入口」**——现在至少存在 ARC 官方大盘、sglang 大盘、robot-review 健康度、社区健康度，本方案还会再建一个 Grafana（§4.9）。
-
 > **线 B 给这个问题加了一档新难度**：它的门禁集群（`openeuler-ci-cn4-cluster`）**连监控栈都没有**，
 > 所以线 B 要先回答"**指标落在哪**"（复用 ns `infra-monitoring`？还是给门禁集群也配一套 Agent？），
 > 这比对"大盘要不要合并"的讨论更靠前。见 §4 待确认项 4。
@@ -401,7 +397,6 @@ rate(门禁结果[15m]) 按 result=failure / 总体      ── 跌破基线即�
 | 段一需 GitHub 侧 queue time（非推测） | `arc-fedsched/pkg/metrics/metrics.go`（`wait_from_arrival_seconds` 的 Help 文案） |
 | 两个 10 min / 30% 的验收标准（**30% 那条本期不纳入**） | [backlog#1874](https://github.com/opensourceways/backlog/issues/1874) 里程碑 2 与验收标准 |
 | 自愈 ≥ 80% / SRE -60% / 三档 / 四个模块 | [backlog#2080](https://github.com/opensourceways/backlog/issues/2080) 验收标准与其需求分析说明书 |
-| GitHub Check 的输出形态 | [backlog#296](https://github.com/opensourceways/backlog/issues/296) |
 | dispatcher 将带来的排队 / 容量指标 | `arc-fedsched/pkg/metrics/metrics.go`（ns `arcfed`：`wait_seconds`、`queued_seconds_total`、`head_blocked_seconds_total`、`node_free_seconds_total`、`cluster_units_free` …） |
 | 两套监控栈同集群不同 ns、不合并 | [微服务可观测性建设技术设计](微服务可观测性建设技术设计.md) §4.8.1 |
 
