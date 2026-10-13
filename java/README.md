@@ -82,15 +82,37 @@ RequestContext.push(community, requestId, traceId);   // try-with-resource 作�
 Java 服务的服务端指标交给 Actuator 暴露（stater 对齐，SDK 不重复埋 HTTP 指标）：
 
 1. 依赖 `micrometer-registry-prometheus` + 引入 `spring-boot-starter-actuator`。
-2. 把 SDK 的 registry 暴露成 bean 让 Actuator 托管（`PrometheusMeterRegistry` 会被
-   actuator 自动发现并挂到 `/actuator/prometheus`）：
+2. 把 SDK 的 registry 暴露成 bean 让 Actuator 托管。**两个 bean 都要暴露**——只暴露
+   `PrometheusMeterRegistry` 会让 `/metrics` 返回 `200 OK` 但 **body 为空**（详见下方说明）：
 
 ```java
+// 带 service/env/instance/community common tags 的 registry：业务指标与 Actuator
+// 官方 instrumentation 都注册到它上面
 @Bean
-public PrometheusMeterRegistry prometheusRegistry(ObsSdkConfig obsConfig) {
+public PrometheusMeterRegistry prometheusMeterRegistry(ObsSdkConfig obsConfig) {
     return ObsMetrics.of(obsConfig).meterRegistry();
 }
+
+// ⚠️ 必须一并暴露，否则 /metrics 是空体
+@Bean
+public CollectorRegistry collectorRegistry(PrometheusMeterRegistry prometheusMeterRegistry) {
+    return prometheusMeterRegistry.getPrometheusRegistry();
+}
 ```
+
+> **为什么第二个 bean 必不可少**：`ObsMetrics.of(cfg).meterRegistry()` 内部 `new
+> PrometheusMeterRegistry(...)` 自带一个**私有** `CollectorRegistry`。只暴露
+> `PrometheusMeterRegistry` 时，Spring Boot 的 `PrometheusMetricsExportAutoConfiguration`
+> 因 `@ConditionalOnMissingBean` 让出 `prometheusMeterRegistry`，但仍会**另建一个空的
+> `CollectorRegistry`** 交给 `PrometheusScrapeEndpoint`（即 `/metrics`）——于是**写指标与
+> 读指标落在两个不同对象**上，`/metrics` 返回 `200 OK` + `Content-Length: 0`，`up=1` 却一条
+> 指标都不吐（采集侧按 `scrape_samples_scraped > 0` 判定时会静默漏报）。显式暴露
+> `collectorRegistry` bean 后 Actuator 复用 SDK 的那个，读写同源。
+>
+> **版本前提**：上面两个全限定名对应 **Micrometer 1.12 / Spring Boot 3.2.x**
+> （`io.micrometer.prometheus.PrometheusMeterRegistry#getPrometheusRegistry()`）。
+> Micrometer 1.13（Boot 3.3+）改包名为 `io.micrometer.prometheusmetrics`，按该版本 API
+> 取到同一个 registry 即可（见「构建与测试」的版本说明）。
 
 3. `application.yml`：`management.endpoints.web.exposure.include: prometheus`。
 
