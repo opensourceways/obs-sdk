@@ -64,6 +64,57 @@ test('level 过滤 + trace_id 预留注入', () => {
   assert.ok(!('span_id' in out[1]));
 });
 
+test('固定字段顺序 + logger + error + 业务字段规范化', () => {
+  const { stream, lines } = capture();
+  log.init({ service: 'srv', env: 'test', instance: 'pod-1',
+    community: 'openeuler', stream });
+
+  log.error('boom', { error: new Error('kaboom'), custom: 'v', nested: { a: 1 } });
+
+  const [rec] = lines();
+  assert.deepStrictEqual(Object.keys(rec), [
+    'time', 'level', 'msg', 'service', 'env', 'instance', 'community',
+    'logger', 'error', 'custom', 'nested',
+  ]);
+  assert.strictEqual(rec.msg, 'boom');
+  assert.match(rec.logger, /^test\/log\.test\.js:\d+$/);
+  assert.match(rec.error, /^Error: kaboom/);
+  assert.strictEqual(rec.custom, 'v');
+  // 嵌套对象压成字符串，保证顶层不出现嵌套结构。
+  assert.strictEqual(rec.nested, '{"a":1}');
+});
+
+test('保留键不可被业务字段覆盖', () => {
+  const { stream, lines } = capture();
+  log.init({ service: 'srv', community: 'openeuler', stream });
+
+  log.info('keep', {
+    service: 'evil', msg: 'evil', level: 'evil', logger: 'evil',
+    request_id: 'evil', time: 'evil', custom: 'v',
+  });
+
+  const [rec] = lines();
+  assert.strictEqual(rec.service, 'srv');
+  assert.strictEqual(rec.msg, 'keep');
+  assert.strictEqual(rec.level, 'info');
+  assert.notStrictEqual(rec.logger, 'evil');
+  assert.ok(!('request_id' in rec));
+  assert.notStrictEqual(rec.time, 'evil');
+  assert.strictEqual(rec.custom, 'v');
+});
+
+test('disableSource 关闭调用位置；BigInt/undefined 规范化', () => {
+  const { stream, lines } = capture();
+  log.init({ service: 'srv', community: 'openeuler', stream, disableSource: true });
+
+  log.info('no source', { n: 10n, skip: undefined });
+
+  const [rec] = lines();
+  assert.ok(!('logger' in rec));
+  assert.strictEqual(rec.n, '10');
+  assert.ok(!('skip' in rec));
+});
+
 test('span_id 预留注入（与 trace_id 互不干扰）', () => {
   const { stream, lines } = capture();
   log.init({ service: 'srv', community: 'openeuler', stream });
