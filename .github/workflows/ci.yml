@@ -52,6 +52,9 @@ jobs:
       - name: npm test
         working-directory: node
         run: npm test
+      - name: node typecheck
+        working-directory: node
+        run: npm run typecheck
 
   java:
     name: java mvn test

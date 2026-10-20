@@ -8,6 +8,7 @@ opensourceways 微服务可观测薄封装 SDK 的 Node 实现，契约见 [spec
 - **请求上下文**：`lib/context` —— `AsyncLocalStorage` 承载 `community/request_id/trace_id/span_id`（后两者为二期 trace 预留位）
 - **中间件**：`lib/middleware` —— Express/通用 HTTP 中间件（注入 request_id + 可信判定点解析 community + 记 `http_server_*`）
 - **community 双层注入**：`service/env/instance` 常驻；`community` 可变 —— 请求上下文覆盖，未覆盖回退部署默认（`OBS_*` 环境变量）
+- **类型声明**：`index.d.ts` 随包发布（`package.json` 的 `types` 字段），TS 消费方无需自建 ambient 声明
 
 ## 用法
 
@@ -86,4 +87,5 @@ layout 约定：`data[0]` 为 msg；其余 plain object 平铺为业务字段；
 
 ```bash
 cd node && npm install && npm test
+cd node && npm run typecheck   # 校验 index.d.ts 与公开 API 用法一致
 ```
