@@ -1,6 +1,6 @@
 {
   "name": "obs-sdk-node",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "opensourceways 微服务可观测薄封装 SDK (Node)——结构化 JSON 日志 + Prometheus 指标，契约见 ../spec",
   "license": "Apache-2.0",
   "main": "index.js",
