@@ -31,33 +31,22 @@ CronJob 拨测（ci-probe 镜像）                       ├─ PrometheusRule 
                                                       └─ Grafana（2 张盘）
 ```
 
-四个要点：
-
-1. **每集群一个 Prometheus Agent**，统一 `remote_write` 到中心，中心侧统一查询与告警。
-2. **拨测类指标走 Pushgateway**，分组为 `job=<probe>/cluster/<集群>`，每次 push 全量替换。
-3. **告警规则集中在中心**：`prometheus-rules.yaml` 40 条 + `squid-rules.yaml` 20 条；`prometheus-npu-rules.yaml` 是**预聚合 recording rules，不是告警**。
-4. **日志走 LTS**：各集群 fluent-bit（namespace `monitoring`）→ LTS，采集配置不在本仓。
-
-唯一的网络特例：`sh-001` 的 lab 出口被 NGFW 丢包，全部拨测的 `PUSHGATEWAY_URL` 改指集群内 Pushgateway。
-
 ---
 
 ## 2. 资源与基础设施
 
-| 采集项 | 覆盖 | 部署方式 | 说明 |
-| --- | --- | --- | --- |
-| cadvisor | 12 集群 | **Kubelet 自带**，直接抓 `:10250/metrics/cadvisor` | 需配抓取，端点无需部署 |
-| kube-state-metrics | 12 集群 | 自建 Helm（社区 chart 5.28.1），**12 个 ArgoCD Application** | 镜像 `modelfoundry/kube-state-metrics:v2.14.0`，Service `:8080`，NodePort `32080` |
-| node-exporter | 9 集群 | 自建 Helm（`hostNetwork` + `hostPID`，`:9100`） | **无 ArgoCD Application**，部署不在本仓管理范围 |
-
-cadvisor 的写入过滤很严格：只 `keep container_network_.*`，丢弃 loopback/veth 等虚拟接口、容器级行（只留 `container=""` 的 Pod 级聚合）以及 `id/name/image` 标签，目的是控制中心侧时序基数。
+| 采集项 | 覆盖 | 部署方式 | 能观测到什么 | 观测不到什么 |
+| --- | --- | --- | --- | --- |
+| cadvisor | 12 集群 | **Kubelet 自带**，本仓只提供抓取配置，抓 `:10250/metrics/cadvisor` | **Pod 级网络收发**：`container_network_{receive,transmit}_{bytes,packets}_total`、`..._packets_dropped_total`、`..._errors_total`；可按 `namespace` / `pod` / `interface` / `node` 下钻到单个 Pod 的进出流量、丢包与错误 | 容器 CPU、内存、文件系统、磁盘 IO（写入过滤只 `keep container_network_.*`）；单容器粒度（丢掉 `container!=""` 的行，只留 `container=""` 的 Pod 聚合） |
+| kube-state-metrics | 12 集群 | 自建 Helm（社区 chart 5.28.1），**12 个 ArgoCD Application**；镜像 `modelfoundry/kube-state-metrics:v2.14.0`，Service `:8080`，NodePort `32080` | **K8s 对象状态**：Pod 相位 / 重启次数 / 容器等待与终止原因、Deployment·RS·STS·DS 的期望与就绪副本、Node Ready 条件与可分配资源、Job·CronJob 的成功失败与最后成功时间、PVC 相位、Service·Namespace·HPA 等对象数量；Pod / Deployment / Node 上**全部 K8s 标签**（`metricLabelsAllowlist: [*]`）以 `label_*` 暴露，可按自定义标签筛 | 资源**实际用量**（它是状态观测器，不产出 CPU / 内存消耗）；容器维度 |
+| node-exporter | 9 集群 | 自建 Helm（`hostNetwork` + `hostPID`，`:9100`），**无 ArgoCD Application** | **节点主机级**：各 CPU mode 时间、内存可用量、文件系统容量与 inode、磁盘读写与 IO 时间、网卡收发 / 错误 / 丢包、`node_load*`；已排除 `/dev` `/proc` `/sys` 与 docker / kubelet 内部挂载点 | Pod / namespace 维度（只有节点 IP，只能定位到机器）；且实际只在 9 个集群采——`guiyang-001` / `guiyang-002` / `wlcb-001` 把该 job 注释掉了 |
 
 对应看板：`CI-Network-Overview`、`Pod-Network-Traffic`（`monitoring/grafana/dashboards/`）。
 
-**已知债**
-
-- node-exporter 只有 chart 没有 ArgoCD 应用，集群重装或节点替换后无人恢复，而采集配置照旧指向旧 IP，会**静默丢数据**。
-- `monitoring-sa` 缺 `nodes list` 权限，node-exporter 只能用**静态节点 IP 列表**，扩缩容要手工改 12 份 patch。
+> 前两项（cadvisor、kube-state-metrics）的 Pod 指标都带 `namespace` 标签，而每个集群的 `remote_write` 都有一条
+> `namespace =~ "ascend-gha-runners|ascend-gha-runners-gy-006" → drop`。relabel 正则是整体锚定的，所以命名空间**恰好叫**
+> `ascend-gha-runners` 的 runner Pod，其网络与状态指标到不了中心；带后缀的（如 `ascend-gha-runners-hk-001`）不受影响。
+> runner 是否可见取决于**命名空间叫什么**，而不是它是不是 runner。
 
 ---
 
@@ -90,7 +79,7 @@ cadvisor 的写入过滤很严格：只 `keep container_network_.*`，丢弃 loo
 
 要点：
 
-- `ci_runner_job` 是 **info 型指标（值恒为 1）**，同一 runner 输出两行（`pod=<runner>` 与 `pod=<runner>-workflow`），便于与 cadvisor 的 `container_network_*` 按 `(cluster, namespace, pod)` 关联。Pushgateway 全量替换语义使 runner 结束后指标自然消失。
+- `ci_runner_job` 是 **info 型指标（值恒为 1）**，同一 runner 输出两行（`pod=<runner>` 与 `pod=<runner>-workflow`），便于与 cadvisor 的 `container_network_*` 按 `(cluster, namespace, pod)` 关联（前提是该 runner 命名空间没被第 2 章的 `namespace` 丢弃规则挡掉）。Pushgateway 全量替换语义使 runner 结束后指标自然消失。
 - **强依赖定制 ARC**：上述 status 字段上游原版没有，升级成社区版会直接断掉采集。
 - `github-status` 的降级逻辑解决了"GitHub 大故障时状态页自己也会过载"的失明问题，用于区分**GitHub 事故还是我方问题**。
 - hk-001 的 `github-probe` 被 patch 成只测直连（香港无墙，不走 git-cdn），告警判据也按集群分开。
