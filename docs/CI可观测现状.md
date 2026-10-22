@@ -1,9 +1,5 @@
 # CI 可观测现状
 
-> 快照时间：2026-10-22
-> 数据来源：`opensourceways/ascend-ci-deployment` main（`4d8d539c`）与华为云 CES 控制面实查
-> 配套文档：[可观测接入指南](可观测接入指南.md)
-
 ## 0. 结论先行
 
 按三个层面看，**资源层与执行层基本完整，workflow 层只看到"正在跑"，看不到"跑得怎么样"，Jenkins 层还是空白**。
@@ -128,18 +124,6 @@ squid 专项另 20 条（`squid-rules.yaml`）：目标/进程存活、指标缺
 | 2 | ARC 控制器 `/metrics` 未采集 | `grafana-dashboard-arc.yaml` 的 26 个面板**大概率是空盘** | 每集群加一个 scrape job（先确认 `:8080` 连通与前缀） |
 | 3 | node-exporter 无 ArgoCD 管理 + 静态 IP | 重装后静默丢数据；扩缩容要手工改 12 份 patch | 补 ArgoCD Application；给 `monitoring-sa` 加 `nodes list` 改动态发现 |
 | 4 | Jenkins 结果观测为零 | 国庆类故障完全不可见 | 按接入指南 6.1 落地 |
-| 5 | `mirror-sync` 已停用 | `kustomization.yaml` 中注释，盘上可能留着永不更新的旧线 | 确认是否还需要，不需要就把目录一起删掉 |
-| 6 | 出口计量只覆盖代理链路 | 直连外网流量不在口径内 | 与云侧 CES / 流日志口径对齐，明确看板口径说明 |
+| 5 | 出口计量只覆盖代理链路 | 直连外网流量不在口径内 | 与云侧 CES / 流日志口径对齐，明确看板口径说明 |
 
 ---
-
-## 9. 文件索引
-
-| 内容 | 路径（`ascend-ci-deployment`） |
-| --- | --- |
-| 采集与拨测公共层 | `monitoring/base/` |
-| 逐集群覆写 | `monitoring/config-for-<cluster>/` |
-| 中心告警规则 | `monitoring/config-for-infra-cn4-x86-common-cluster/prometheus-rules.yaml`、`squid-rules.yaml` |
-| NPU 预聚合 | `monitoring/config-for-infra-cn4-x86-common-cluster/prometheus-npu-rules.yaml` |
-| 看板 | `monitoring/grafana/dashboards/` |
-| ArgoCD 应用 | `argocd/clusters/<cluster>/` |
