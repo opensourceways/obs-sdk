@@ -43,11 +43,6 @@ CronJob 拨测（ci-probe 镜像）                       ├─ PrometheusRule 
 
 对应看板：`CI-Network-Overview`、`Pod-Network-Traffic`（`monitoring/grafana/dashboards/`）。
 
-> 前两项（cadvisor、kube-state-metrics）的 Pod 指标都带 `namespace` 标签，而每个集群的 `remote_write` 都有一条
-> `namespace =~ "ascend-gha-runners|ascend-gha-runners-gy-006" → drop`。relabel 正则是整体锚定的，所以命名空间**恰好叫**
-> `ascend-gha-runners` 的 runner Pod，其网络与状态指标到不了中心；带后缀的（如 `ascend-gha-runners-hk-001`）不受影响。
-> runner 是否可见取决于**命名空间叫什么**，而不是它是不是 runner。
-
 ---
 
 ## 3. CI 执行资源
@@ -68,21 +63,14 @@ CronJob 拨测（ci-probe 镜像）                       ├─ PrometheusRule 
 
 ## 4. CI workflow（runner 维度）
 
-全部是 `monitoring/base/` 下的 CronJob，同一镜像 `ci-probe:1.0`，结果推 Pushgateway：
+除 `github-status`（hk-001 独有）外，都是 `monitoring/base/` 下的 CronJob，同一镜像 `ci-probe:1.0`，结果推 Pushgateway：
 
-| 能力 | CronJob | 覆盖 | 频率 | 数据来源 |
-| --- | --- | --- | --- | --- |
-| `ci_runner_job` | `runner-job-probe` | 14 集群 | 每 2 分钟 | list `EphemeralRunner`，读定制 ARC 写入 `status` 的 `workflowRunId` / `jobRepositoryName` / `jobDisplayName` / `jobWorkflowRef` |
-| runner 版本 | `runner-version-check` | 14 集群 | 每天 06:00 | 对去重镜像起一次性 Pod 跑 `run.sh --version`，与 GitHub 最新 release 比对 |
-| GitHub 连通性 | `github-probe` | 14 集群 | 每 5 分钟 | `git clone --depth=1` 测试仓，分代理 / 直连两条路径 |
-| GitHub 官方状态 | `github-status` | **仅 hk-001** | 每 5 分钟 | githubstatus.com Statuspage API，失败时降级探 `api.github.com` 推断事故等级 |
-
-要点：
-
-- `ci_runner_job` 是 **info 型指标（值恒为 1）**，同一 runner 输出两行（`pod=<runner>` 与 `pod=<runner>-workflow`），便于与 cadvisor 的 `container_network_*` 按 `(cluster, namespace, pod)` 关联（前提是该 runner 命名空间没被第 2 章的 `namespace` 丢弃规则挡掉）。Pushgateway 全量替换语义使 runner 结束后指标自然消失。
-- **强依赖定制 ARC**：上述 status 字段上游原版没有，升级成社区版会直接断掉采集。
-- `github-status` 的降级逻辑解决了"GitHub 大故障时状态页自己也会过载"的失明问题，用于区分**GitHub 事故还是我方问题**。
-- hk-001 的 `github-probe` 被 patch 成只测直连（香港无墙，不走 git-cdn），告警判据也按集群分开。
+| 能力（指标） | CronJob | 覆盖 | 频率 | 能观测到什么 | 观测不到什么 |
+| --- | --- | --- | --- | --- | --- |
+| `ci_runner_job` / `ci_runner_active_jobs` | `runner-job-probe` | 14 集群 | 每 2 分钟 | **此刻谁在跑**：每行带 `cluster` / `namespace` / `runner` / `pod` / `repo` / `run_id` / `workflow` / `job_name`，可按仓库、workflow、runner 命名空间聚合；`ci_runner_active_jobs` 给每集群活跃数。数据来自定制 ARC 写入 `EphemeralRunner.status` 的字段，**升级成社区版 ARC 会直接断采** | 构建**结果**（成功 / 失败）、单次耗时、排队时长；已结束的 runner（Pushgateway 全量替换，runner 结束即从指标消失）；runner 的网络 / CPU 用量（要另查 cadvisor、node-exporter） |
+| `runner_version_deployed` / `runner_version_latest` / `runner_version_latest_release_epoch` / `runner_version_update_available` | `runner-version-check` | 14 集群 | 每天 06:00 | **版本一致性**：各命名空间实际部署的 runner 版本、GitHub 最新 release 版本与发布时间、是否存在可升级版本（`update_available`） | 某版本是否真的兼容当前构建；只有每天一次的采样，当天升级完也要等到次日才反映 |
+| `github_probe_success` / `github_probe_latency_ms` | `github-probe` | 14 集群 | 每 5 分钟 | **集群出网是否通 GitHub**：`git clone --depth=1` 测试仓的成功与否和耗时，`path="proxy"` 是走 git-cdn / gh-proxy 这条，`path="any"` 表示任一路径成功；hk-001 的 patch 把它换成 `path="direct"`（香港无墙，直连 github.com）+ `path="any"` | 失败的具体原因（DNS 解析、证书、白名单、限流都只表现为 clone 失败）；除 hk-001 外**都不测直连**；GitHub 官方是否故障（见下一行） |
+| `github_status_indicator` | `github-status` | **仅 hk-001** | 每 5 分钟 | **GitHub 侧是否故障**：`0` / `1` / `2` / `3` 对应 Statuspage 的 none / minor / major / critical；状态页可达但拿不到判据时记 `-1`，状态页 API 完全不可达时置 `2`（推断 major）——用来区分「GitHub 真挂了」和「我方连不上」 | 我方其他集群的连通性（只代表 hk-001 这一处出口）；事故的组件与影响范围细节 |
 
 ---
 
