@@ -92,19 +92,21 @@ class ObsLoggingTest {
     }
 
     /**
-     * 缺陷回归：部署级字段一旦只存在于线程本地 MDC 就会随线程消失；访问器是全局静态
-     * 取值，{@code init} 未调用时仍须回退契约默认（"unknown"），保证 provider 恒能
-     * 输出非空部署级字段。
+     * 回归：部署级字段早期（Tomcat / 框架启动日志）早于接入方 {@code init} 调用，
+     * 此时不能直接回退 "unknown"——契约规定 unknown 是「尚未判定归属」的保留值，
+     * 且 {@code instance} 的契约默认是 hostname。未 init 时应按
+     * 「{@code OBS_*} 环境变量 &gt; 契约默认」解析，与 {@link io.opensourceways.obssdk.internal.Env}
+     * 的三级兜底保持一致。
      */
     @Test
-    void 未init时部署级访问器回退契约默认() throws Exception {
+    void deploymentAccessorsFallbackToEnvWhenNotInitialized() throws Exception {
         java.lang.reflect.Field cfgField = ObsLogging.class.getDeclaredField("cfg");
         cfgField.setAccessible(true);
         cfgField.set(null, null);
 
-        assertEquals("unknown", ObsLogging.deploymentService());
-        assertEquals("unknown", ObsLogging.deploymentEnv());
-        assertEquals("unknown", ObsLogging.deploymentInstance());
-        assertEquals("unknown", ObsLogging.deploymentCommunity());
+        assertEquals(io.opensourceways.obssdk.internal.Env.service(null), ObsLogging.deploymentService());
+        assertEquals(io.opensourceways.obssdk.internal.Env.env(null), ObsLogging.deploymentEnv());
+        assertEquals(io.opensourceways.obssdk.internal.Env.instance(null), ObsLogging.deploymentInstance());
+        assertEquals(io.opensourceways.obssdk.internal.Env.community(null), ObsLogging.deploymentCommunity());
     }
 }

@@ -88,27 +88,36 @@ public final class ObsLogging {
         MDC.put(MDC_COMMUNITY, deploymentCommunity());
     }
 
-    /** 部署级 service；{@code init} 未调用时回退契约默认（见 internal/Env）。 */
+    /*
+     * 四个部署级访问器在 init 未调用时按「OBS_* 环境变量 > 契约默认」解析，而不是直接
+     * 回退契约默认。原因：Web 容器（Tomcat）与框架的启动日志早于接入方的 init 调用
+     * （Servlet Filter init / @Bean 创建），直接回退会把 service/env/instance/community
+     * 打成 "unknown"，而契约规定 unknown 是「尚未判定归属」的保留值，不应出现在正常
+     * 运营数据里；同时 instance 的契约默认是 hostname，直接回退 DEFAULT_VALUE 与
+     * spec/common-fields.md 不一致。逐事件读环境变量仅在 cfg 为空时发生，正常路径无额外开销。
+     */
+
+    /** 部署级 service：未 init 时按 {@code OBS_SERVICE} → 契约默认解析（见 internal/Env）。 */
     public static String deploymentService() {
         ObsSdkConfig current = cfg;
-        return current != null && current.service() != null ? current.service() : Env.DEFAULT_VALUE;
+        return current != null && current.service() != null ? current.service() : Env.service(null);
     }
 
-    /** 部署级 env；{@code init} 未调用时回退契约默认（见 internal/Env）。 */
+    /** 部署级 env：未 init 时按 {@code OBS_ENV} → 契约默认解析（见 internal/Env）。 */
     public static String deploymentEnv() {
         ObsSdkConfig current = cfg;
-        return current != null && current.envName() != null ? current.envName() : Env.DEFAULT_VALUE;
+        return current != null && current.envName() != null ? current.envName() : Env.env(null);
     }
 
-    /** 部署级 instance；{@code init} 未调用时回退契约默认（见 internal/Env）。 */
+    /** 部署级 instance：未 init 时按 {@code OBS_INSTANCE} → hostname 解析（见 internal/Env）。 */
     public static String deploymentInstance() {
         ObsSdkConfig current = cfg;
-        return current != null && current.instance() != null ? current.instance() : Env.DEFAULT_VALUE;
+        return current != null && current.instance() != null ? current.instance() : Env.instance(null);
     }
 
-    /** 部署级默认 community；{@code init} 未调用时回退契约默认（见 internal/Env）。 */
+    /** 部署级默认 community：未 init 时按 {@code OBS_COMMUNITY} → 契约默认解析（见 internal/Env）。 */
     public static String deploymentCommunity() {
         ObsSdkConfig current = cfg;
-        return current != null && current.community() != null ? current.community() : Env.DEFAULT_VALUE;
+        return current != null && current.community() != null ? current.community() : Env.community(null);
     }
 }
