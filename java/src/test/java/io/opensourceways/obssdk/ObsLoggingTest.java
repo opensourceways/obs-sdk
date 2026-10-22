@@ -99,7 +99,7 @@ class ObsLoggingTest {
      * 的三级兜底保持一致。
      */
     @Test
-    void 未init时部署级访问器按环境变量回退() throws Exception {
+    void deploymentAccessorsFallbackToEnvWhenNotInitialized() throws Exception {
         java.lang.reflect.Field cfgField = ObsLogging.class.getDeclaredField("cfg");
         cfgField.setAccessible(true);
         cfgField.set(null, null);
