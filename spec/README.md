@@ -18,6 +18,7 @@
 | [metrics-format.md](metrics-format.md) | 指标命名前缀、label 规范、`community` 双层注入建模 |
 | [common-fields.md](common-fields.md) | 通用字段 `service` / `env` / `instance` / `community` / `request_id` / `trace_id` / `span_id` 的来源与注入规则 |
 | [community-values.md](community-values.md) | `community` 取值枚举（`infrastructure` 仓 `service.yaml` 的 communities，随 service.yaml 更新） |
+| [otlp-mapping.md](otlp-mapping.md) | **映射附录（非契约本体）**：落盘字段 → OTel 语义键（Resource / LogRecord / 指标）的对齐表，供将来接 OTLP 时零返工 |
 
 ## 语言 SDK 对应关系
 
