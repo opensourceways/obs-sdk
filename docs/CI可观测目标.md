@@ -1,374 +1,183 @@
-# CI 可观测目标（评审稿）
+# CI 可观测目标：从问题发现到根因分析与故障自愈
 
-> **需求来源**：[backlog#1874](https://github.com/opensourceways/backlog/issues/1874)（26H2 CI 工作专项 · 里程碑 2）、
-> [backlog#2080](https://github.com/opensourceways/backlog/issues/2080)（CI 质量问题可自助程度提升）
->
-> **本文覆盖两种 CI**（见 §0）：**参与型社区的 CI**（基于 GitHub Actions）与**主导型社区的 CI**。
-> 主导型这一种里，**本文只针对 openEuler 社区仍在用 Jenkins 做门禁**的那部分（其余社区已迁 openlibing + CodeArts，见 §2）。
-> 两者各有各的问题清单与目标指标——参与型 CI 关注"等多久、跑成什么样"，主导型 CI 关注"结果可不可信、有没有大面积挂"。**两套指标不要互相搬**。
->
-> ⚠️ **本期目标只有「问题发现与解决」**——落在 **Q1 排队多久 / Q2 跑得怎么样 / Q4 出问题及时发现** 这三问上。
->
-> **本文只定目标与判定口径。** 改哪个仓、用什么组件、怎么自愈，留到各自的架构设计阶段（#2080 已按 need_design 立项）。
+本文定义 CI 可观测要达成的目标，以及为达成目标需要建设的能力。具体指标、组件与实现细节见
+[可观测接入指南](可观测接入指南.md) 第 5 章，本文只回答三个问题：**目标是什么、路线是否成熟、每一步的前置条件是什么**。
 
----
+## 1. 目标与边界
 
-## 0. 两种 CI
+### 1.1 三级目标
 
-社区里的 CI 不是一个东西，是**两种并行、技术栈完全不同**的 CI：
-
-| | **参与型社区 CI** | **主导型社区 CI** |
+| 级别 | 要回答的问题 | 验收标准 |
 | --- | --- | --- |
-| **代表** | vllm（`vllm-ascend` / `vllm-project`）、sglang（`sgl-project`）、verl、triton（`triton-lang`）等 | openEuler（+ src-openeuler）、**openUBMC、CANN、MindSpore、Ascend** 等 |
-| **代码托管** | GitHub | **GitCode** |
-| **CI 引擎** | GitHub Actions + **ARC 自托管 runner** | **两代并存**：**openEuler** 仍用 **Jenkins 门禁**（`community_check_v2`）；**其余全部**已迁 **openlibing + 华为云 CodeArts** |
-| **提交触发** | `on: pull_request` | openEuler：webhook → ci-bot → Jenkins job（**ci-bot 不在本仓可见范围**，见 §2.2）；其余：CodeArts 流水线 |
-| **结果回写** | GitHub Check / commit status | openEuler：**ci-bot 标签** `ci_processing` → `ci_successful` / `ci_failed`；其余：各社区自己的聚合脚本（如 Ascend 蓝区 `monitor.py` → PR 评论表格） |
-| **稀缺资源** | **NPU 卡**（贵、按卡时计价） | **CPU 构建机 / 净室环境**（数量与并发槽位） |
-| **用户最痛的** | **等太久**（拿不到卡） | **结果不可信、看不到为什么挂** |
-| **运维最痛的** | 卡不够用 **+ 卡被占着不用** | **大面积集中失败没人先发现** |
-| **已有验收标准** | #1874：排队 P95 < 10 min（**卡时利用率 > 30% 本期不纳入**） | **无**（#1874 / #2080 现有指标全是参与型 CI 口径） |
+| **L1 问题发现** | 哪条流水线、什么时候、失败了还是排队中 | 一次失败在 2 分钟内产生可读告警；排队超阈值在 7 分钟内告警 |
+| **L2 根因分析** | 是平台的问题还是代码的问题，卡在哪个环节 | 告警附带「疑似根因 + 证据链接 + 建议动作」，人看一眼能确认 |
+| **L3 故障自愈** | 系统能否自己把可恢复的故障修掉 | 高频、确定性的基础设施故障自动恢复，且误判率可控、动作可回滚 |
 
-> **本期目标 = 问题发现与解决，只有三问**：**Q1 排队多久 / Q2 跑得怎么样 / Q4 出问题及时发现**。
-> **两者的"资源利用率"这一维本期都不做**——#1874 的「卡时利用率 > 30%」不纳入本文口径，主导型 CI 的"构建机利用率"同理
-> （见 §0.1 末、§3 待确认项 8）。
->
+### 1.2 现状基线
 
-因此本文分两章：**§1 参与型 CI，§2 主导型 CI**，末尾 §3 汇总评审待确认项。
+- **一期**（aggregator）：run/job 结果与耗时、在途排队与执行、三条轮询路径、结果级告警。
+- **二期**（ghalistener / 集群侧）：容量 gauge、②+③ 启动耗时、④ 执行耗时。
+- **三期**（ci-event-agent）：run 身份、重跑补齐、Pod 生命周期事件。
 
----
+L2 与 L3 都建立在三期之上——**没有 run 身份，根因分析只能到「某个仓的某个 workflow」这一层**。
 
-## 1. 参与型社区 CI（GitHub Actions / ARC）
+## 2. 这条路有没有标准
 
-### 1.1 目标：CI 可观测要回答的问题（本期三问）
+结论：**发现问题有标准可对齐，根因分析和故障自愈没有标准**，只有一条被反复验证的参考架构。选型时不要把「某产品宣称的 AIOps」当成标准。
 
-CI 是把代码变成"能合入的结论"的生产线。它的"可用性"和线上服务不一样——**没有 5xx，用户照样在等**。
-所以目标不能照抄"错误率 < 1%"，得从**用户和运维实际会问的问题**倒推。
-下面是四个候选问题，**本期只取 Q1 / Q2 / Q4**（Q3 是"资源值不值"，属"省钱"类目标，本期不做）：
-
-| # | 在问什么 | 现在能不能回答 | 目标口径（可量化） |
-| --- | --- | --- | --- |
-| Q1 | **还要等多久？** | ⚠️ 分布**已有**（`gha_job_startup_duration_seconds`，45 桶），但**没人算分位数**；"段一"零信号 | **排队时长**（提交 → 开始执行）可查，P95 **< 10 min** |
-| Q2 | **这次跑得怎么样？** | 半个——只有"超过 2.5 h"的点告警 | **执行耗时** P95 **< 10 min**；**成败**可按仓库 / 规格 / 用户下钻 |
-| Q3 | ~~**资源用得值不值？**~~ | 节点 / 卡维度能看，但**算不出"使用率"这个数** | **本期不纳入目标**——#1874 有「卡时利用率 > 30%」这条验收，但本文只做问题发现与解决，不做"省钱"类目标 |
-| Q4 | **出问题谁先知道？** | 运维先知道（邮件），用户更晚 | **提前于用户识别**；用户可自助的先提示用户 |
-
-> **本期目标 = Q1 / Q2 / Q4 这三问**，Q3 划掉。
-> Q1 / Q2 的两个 10 min 直接来自 [#1874](https://github.com/opensourceways/backlog/issues/1874) 的验收标准，不是本文新提的指标；
-> Q3 的 30% 同样来自 #1874，但**本期不纳入本文口径**（文首声明的同一条原则）。
-
-**核心判断**：**参与型 CI 的重心不在"基础设施活着没有"，而在"这一单交易（一次 workflow run）等了多久、跑得怎么样、出问题谁先知道"。**
-前者已经做得很厚（§1.2），后者是本节要补的那一层。
-
-### 1.2 现状：基础设施层已跑通一套闭环，缺的是作业层
-
-`ascend-ci-deployment/monitoring/` 是一套标准的「集群侧 Agent 采集 + 中心聚合」链路，**已经在跑**：
-
-```
-各 CI 集群 ─┬─ Prometheus Agent（scrape kube-state-metrics + node-exporter）
-            │                                  │ remote_write
-            └─ 拨测 CronJob ──► Pushgateway ───┤
-                                               ▼
-                                  中心 Prometheus（infra-cn4-x86-common-cluster · ns infra-monitoring）
-                                               ├─► Grafana（ARC 官方大盘 + sglang 大盘）
-                                               └─► Alertmanager ──► 邮件
-```
-
-| 已有之物 | 内容 |
-| --- | --- |
-| **拨测 9 类** | `github-probe`（5 min，直连 + gh-proxy 双路）、`github-status`（GitHub 官方状态页）、`shared-disk`（10 min）、`cloud-account`（每小时余额）、`sa-audit`（每小时）、`cert-expiry`（每天）、`mirror-sync`（30 min）、`runner-version`、`sfs-turbo-disk` |
-| **告警 31 条** | 见下 |
-| **大盘** | **ARC 官方大盘**（`manifests/grafana/grafana-dashboard-arc.yaml`，约 25 个面板：Runner Performance / Startup Duration / Job Execution / Pending Runners / Out of Memory / Queue Depth / Reconcile Time …），另有一个 sglang 业务大盘 |
-| **排队相关指标** | `gha_job_startup_duration_seconds`（**histogram**，每个 scale-set 显式配了 45 个桶，0.01 s → 3600 s）、`gha_controller_pending_ephemeral_runners`（gauge）、`gha_running_jobs` / `gha_busy_runners` / `gha_idle_runners` / `gha_desired_runners`（均带 `repository` / `organization` 等 label） |
-
-现有 31 条告警按**判定对象**分四类：
-
-| 类别 | 代表告警 |
-| --- | --- |
-| **外部依赖** | `GitHubUnreachable`、`GitHubProxyUnreachable`、`GitHubDirectUnreachable`、`GitHubStatusOutage`、`CloudAccountLowBalance`、`CertExpiring`、`SharedDiskHighUsage`、`SharedDiskMountFailed`、`SAAuditAPIUnreachable` |
-| **CI 组件自身** | `RunnerCrashLooping`、`RunnerPodPendingTooLong`、`RunnerImagePullFailed`、`RunnerInvalidImageName`、`InfraServiceCrashLooping`、`ListenerCrashLooping`、`NginxPodDown`、`NPUCardDropped` |
-| **拨测自身的可信度** | `ProbeStale`、`GitHubProbeMissing`、`GitHubStatusProbeStale`、`SfsTurboDiskProbeStale`、`CertProbeFailed`、`GitHubStatusPageUnreachable` |
-| **作业 / 合规** | `WorkflowRunTooLong`（超 2.5 h）、`RunnerUpdateAvailable`、`RunnerVersionExpiring`、`SAExcessiveClusterAdmin`、`AlertDeliverySLOBreach` |
-
-> **第三类是这套东西做得好的一点**：它特意为"拨测本身死了"配了告警（`ProbeStale` / `GitHubProbeMissing`），
-> 否则"探不到"和"没在探"长得一样：**「未知」必须是一等状态**。主导型 CI 要从一开始就带上这条（§2.4 J5）。
-
-**缺的是「作业层」**：
-
-| 层 | 看什么 | 现状 |
+| 层 | 标准化程度 | 可对齐的锚点 |
 | --- | --- | --- |
-| **资源层** | 节点 / NPU 卡 / 磁盘 / 网络 | ✅ node-exporter + kube-state-metrics，已有 |
-| **控制器层** | ARC 的 runner 伸缩、队列、reconcile | ✅ ARC 自带指标 + 官方大盘，已有 |
-| **作业层** | **一次 workflow run 的等待、耗时、成败、归因** | ⚠️ 排队时长**有分布数据**（没算分位数）、另有两条"超长"点告警；**段一零信号**、无下钻维度、无用户出口 |
+| L0 数据模型 | 高 | OpenTelemetry **CI/CD 语义约定**（RC）：`cicd.pipeline.run.id` / `.state` / `.result`、`cicd.pipeline.task.run.id`、`cicd.worker.*`；[spec/otlp-mapping.md](spec/otlp-mapping.md) 已有字段映射的先例 |
+| L1 检测告警 | 高 | SLI/SLO + burn-rate（Google SRE），symptom-based 而非 cause-based |
+| L2 上下文富化 | 中 | OTel k8s 约定（`k8s.pod.name` / `k8s.node.name`）+ 变更事件；拓扑模型无统一标准 |
+| L3 根因分析 | 低 | 无标准。共识模式：统一遥测 → 拓扑/依赖关联 → 变更关联 → 假设排序 → 人确认 |
+| L4 故障自愈 | 低～中 | 无标准。共识是 K8s operator 控制回路 + 动作白名单 + shadow/审批/熔断 |
+| L5 效果评估 | 低 | MTTD / MTTR / 自愈成功率 / 误判率，各家都在用，口径不统一 |
 
-作业层的三个具体缺口：
+**一条硬约束**：`cicd.pipeline.run.id` 用作 metrics 标签会造成高基数，OTel 语义约定本身就要求必须 opt-in。这与指南 5.4.1「`run_id` / `head_sha` 禁止做标签」一致——**run 身份走日志、事件与 resource attribute，不走指标标签**。
 
-1. **"等待"有数据，但没有判定，而且只覆盖一半。** 排队时长**已经有 histogram**——`gha_job_startup_duration_seconds`，
-   每个 scale-set 显式配了 **45 个桶（0.01 s → 3600 s）**，大盘上也有 `Startup Duration` 面板。缺的是两端：
-   **没人算分位数**（面板只做 `sum by(le) (increase(..._bucket))`，全仓无一处 `histogram_quantile` 作用在它上面，
-   所以 #1874 的"P95 < 10 min"是**数据齐了、判定没做**）、**"段一"完全没信号**（见 §1.3 末）。
-   另外，唯一一条量"等太久"的告警 `RunnerPodPendingTooLong` 是 **`for: 35m`**，而目标是 P95 < 10 min——
-   **它响的时候 SLO 已被超 3.5 倍**；它数的是"pod 已创建但还没被调度到节点"，用途是防卡死，不是测排队。
-2. **没有下钻维度。** 现有告警的 label 是 `cluster` / `namespace` / `pod`，这是**运维视角**（哪个集群坏了）。
-   用户问的是"**我这个仓库为什么慢**"，需要 `repo` / `runs-on` 规格 / 触发者这些维度，现在一个都没有。
-3. **出口是运维，不是用户。** 告警路由到的是**逐个列出的运维个人邮箱**（`alertmanager-config-secret.yaml`），
-   没有任何面向社区用户的出口。用户唯一的感知途径是"job 一直不开始"。这正是 #2080 要改的。
-
-### 1.3 目标指标：本期最小必须集 C1 / C2 / C4 / C5
-
-**从一次 workflow run 的生命周期倒推**，而不是从 CI 组件有什么函数倒推。
-**本期只落四组**——C3（资源忙不忙）对应已划掉的 Q3，**本期不做**：
-
-| # | 问题 | 产出的信号 | 对应目标 |
-| --- | --- | --- | --- |
-| **C1** | 用户提交后，**等了多久才开始**？ | 排队时长 Histogram + 队列深度 Gauge | Q1 |
-| **C2** | **跑成什么样、跑了多久**？ | 作业 Counter（带 `result` 区分成败）+ 耗时 Histogram | Q2 |
-| ~~**C3**~~ | ~~资源**忙不忙**？~~ | ~~每资源池的"卡时忙 / 卡时可用" seconds Counter~~ | ~~Q3~~ —— **本期不做**（不背"省资源"目标；现有 node-exporter / kube-state-metrics 的节点与卡维度数据够运维看容量，不需要再建"利用率"这个派生数） |
-| **C4** | 失败**卡在哪一阶段**？ | 阶段维度的失败 Counter（见下） | Q4 / 自助提示 |
-| **C5** | 每条链路上**至少一个无条件 set 的 gauge** | — | 防"全静默 = 全成功" |
-
-> **C1 是参与型 CI 的重点**——不是因为它"现在完全没有"（分布数据已有，见 §1.2），而是因为**验收标准要的那个数（P95）现在没人算**；
-> 且它天然跨两条链路（段一在 GitHub 侧、段二在集群侧），比 C2–C5 都难凑齐。
-> **C5 的道理**：Counter 在没有事件时是**静默**的，"今天一次都没排队"和"排队指标根本没埋"在图上长得一样。
-> 所以每条关键链路上至少要有**一个无条件 set 的 gauge**（如"当前队列深度""当前 pending runner 数"）来证明这条链路还活着。
-
-**C4 的阶段划分**——不新造，是把已有那批"CI 组件自身"告警的判定对象，重新组织成用户能读的维度：
+## 3. 参考架构
 
 ```
-调度 → 镜像拉取 → Pod 启动 / runner 注册 → NPU 预检查 → 作业执行
+L5 评估         MTTD / MTTR / 自愈成功率 / 误判率 / 重复失败率
+                  ▲
+L4 自愈         remediation controller：动作白名单 · 三档推进 · 熔断 · 审计
+                  ▲
+L3 根因         签名匹配 · 阶段定位 · 相关性 · 变更关联 → 「假设 + 证据」
+                  ▲
+L2 富化         告警附带上下文：run → EphemeralRunner → Pod → 节点 → 卡池 → 变更
+                  ▲
+L1 检测         SLO / burn-rate：成功率、排队时长 p90、启动耗时 p90
+                  ▲
+L0 语义         统一身份与字段：run_id / job_id / platform / repo / workflow / branch_class
 ```
 
-**一个必须点破的取数盲区**：GitHub Actions 的"排队"有**两段**——
+每层只依赖下一层的产出，不能跳层：**没有 L0 的身份，L2 富化拼不出链路；没有 L2 的上下文，L4 的自愈只能靠猜。**
 
-- **段一：job 已在 GitHub 侧排队，但还没有 runner 被分配。** 此时集群里**什么都没有**，本地零信号。
-- **段二：runner 已被分配，但作业还没真正跑起来**（等调度 / 等镜像 / 等 runner 注册）。
+## 4. 建设内容
 
-**段二的分布已经有了**——`gha_job_startup_duration_seconds` 就是为它埋的 histogram（桶一直配到 3600 s，说明设计时就预期它会很长）。
-而 **#1874「排队 < 10 min」的痛点主要在段一**，段一**只能从 GitHub 侧取数**（API / webhook），本地无论如何也量不到。
+### 4.1 数据地基（L0）
 
-> 这条不是推测：`arc-fedsched` 的 `wait_from_arrival_seconds` 注释直接写着 ——
-> *"Seconds from arrival to the release；**equal to `wait_seconds` until a GitHub queue time exists**"* ——
-> 连未来那套调度器也把"GitHub 侧的排队时间"当成一个**外部输入**，拿不到就先退化成"从到达算起"。
-> 这是 §3 待确认项 1 的由来。
+现有指标能回答「哪个仓、哪个 workflow、失败还是排队」，但回答不了「哪一次 run、哪一个 Pod、哪台节点」。RCA 需要补四类信号：
 
-顺带纠一个容易误解的面板名：ARC 官方大盘里的 **`Queue Depth` / `Workqueue Queue Duration` 不是用户 job 的排队**，
-它们是 `workqueue_depth` / `workqueue_queue_duration_seconds`——**控制器自己的 reconcile 队列**（controller-runtime 标准指标）。
-真正对应用户排队的是 `Startup Duration` 面板，以及 `Pending Runners`（`gha_controller_pending_ephemeral_runners`）。
-
-### 1.4 质量问题分类与自助程度分级（参与型 CI）
-
-[#2080](https://github.com/opensourceways/backlog/issues/2080) 已定三档（下表右列的目标值引自其验收标准）：
-
-| 档 | 判定 | 出口 | 目标 |
+| 信号 | 内容 | 来源 | 期次 |
 | --- | --- | --- | --- |
-| **① 已知可自愈** | 故障模式已识别，且有确定性修复动作 | **集群内自动修复**（重启 / 重建 / 驱逐） | 自愈成功率 ≥ 80% |
-| **② 用户可自助** | 由用户输入导致，用户自己能改 | **GitHub 侧主动提示 + 修复建议** | 无需 SRE 介入 |
-| **③ 需人工** | 需要 infra 判断 | **结构化错误信息（错误码 + 原因 + 建议措施）** + SOP | SRE 重复介入 -60% |
+| **run 身份贯穿** | EphemeralRunner / runner Pod 打上 `run_id`、`job_id`（pod label 或 annotation），让 LTS 里的日志能按 run 检索 | 定制 ARC 写入 + event agent | 三期 |
+| **Pod 生命周期** | Pending → Created → Ready → Completed 的时刻与状态，用来拆分 ②扩容 / ③启动 | ci-event-agent watch EphemeralRunner + Pod | 三期 |
+| **k8s 事件** | `FailedScheduling` / `FailedMount` / `ErrImagePull` / `OOMKilled` / `Unhealthy` | kube-event exporter | 三期 |
+| **变更时间线** | values/chart 版本、runner 版本、节点池扩缩、镜像源切换时刻 | GitOps commit 历史 + 发布记录 | 可提前，成本最低 |
 
-**归到哪一档不是拍脑袋，而是看"错在 C4 的哪一段"**：
+变更时间线是性价比最高的一项：CI 故障的根因里「最近改了什么」占比极高，而部署全在 GitOps 里，接入只是把 commit 时间线拉进查询。
 
-| C4 阶段 | 典型故障 | 初判档位 |
+### 4.2 失败分类法（L3 的前提）
+
+没有分类，根因分析就是猜。先定义可判定的类别：
+
+| 类别 | 典型签名 | 可否自愈 | 责任方 |
+| --- | --- | --- | --- |
+| 资源不足 | Pod Pending、`FailedScheduling`、scale set desired 卡在 0 | ✅ 扩容 / 排空 / 换标签 | 平台 |
+| 镜像 / 网络 | `ErrImagePull`、拉 pypi/npm 超时、proxy 5xx | ✅ 切源、预热、重跑 | 平台 |
+| 存储 | 共享盘 mount 失败、no space、inode 满 | ✅ 清理 / 迁移 / 重跑 | 平台 |
+| runner 生命周期 | listener 失联、注册失败、EphemeralRunner 残留 | ✅ 重建 / 清理 | 平台 |
+| 配置 / 配额 | 无匹配 label、并发排队、token 过期 | ⚠️ 半自动，改配置要人批 | 平台 |
+| 超时 / 卡死 | job 跑数小时、占卡不用 | ✅ 杀 Pod 释放 | 平台 |
+| 外部依赖 | GitHub / GitCode 或公共源不可达 | ⚠️ 重试，不自愈 | 外部 |
+| 代码 / 测试 | 编译错误、断言失败、flaky 用例 | ❌ 只归因与通知 | 作者 |
+
+**大部分失败落在最后一行**：vllm-ascend 实测最近 100 个 run 里 86% 由 PR 触发、失败率 14.5%，其中绝大多数是贡献者代码或 flaky 用例。L3 的价值集中在基础设施类——这也是判断投入是否值得的前提。
+
+### 4.3 根因分析（L3）
+
+按性价比排序的三板斧：
+
+1. **阶段定位**：先看卡在 ①平台排队 / ②③启动 / ④执行。①→并发或配额；②③→节点资源、镜像、挂载、网络；④→代码或资源超时。这一步就能砍掉一半排查面。
+2. **签名匹配**：从 job 日志抽取错误模板并归类（正则/SQL 聚类），先覆盖高频签名，规则库够到七成即可，剩余再上统计。
+3. **相关性归因**：多仓、多 workflow 在同一时间窗同时失败 → 平台侧；单仓单 workflow → 代码或该仓配置。「最近一小时内改过什么」作为最强的佐证。
+
+输出形态固定为「假设 + 证据 + 建议动作」，且证据必须可点开（日志查询、指标快照、变更 commit）。LLM 只用于日志摘要与假设排序，**不做判定**，且结论必须能溯源。
+
+### 4.4 故障自愈（L4）
+
+只做幂等、可回滚、影响面可控的动作：
+
+| 动作 | 触发条件 | 风险 |
 | --- | --- | --- |
-| 调度 | `runs-on` 标签写错、请求卡数超过机型上限 | ② 用户可自助 |
-| 调度 | 整个资源池没卡了 / 跨集群（karmada）层问题 | ③ 需人工 |
-| 镜像拉取 | 临时 registry 抖动 | ① 可自愈 |
-| Pod 启动 | runner pod crashloop | ① 可自愈 |
-| NPU 预检查 | 作业要求的环境不满足（如 error 8020） | ② 用户可自助 |
+| 重跑失败 job（限一次） | 签名属于基础设施类，同一 commit 二次重跑 | 低 |
+| 清理残留 EphemeralRunner / 卡死 Pod | 已终态但 Pod 残留，或 running 超阈值 | 低 |
+| 取消僵尸 run | 本仓、超 7 天仍未启动 | 低（fork run 慎动） |
+| 重建失联 listener | 心跳缺失且 scale set 无响应 | 中 |
+| 节点池扩容 / 排空坏节点 | Pending 超时且该池无可用卡 | 中 |
+| 清理占卡不用的 NPU | 占卡超阈值且无活跃 job | 中 |
+| 切换镜像源 / 预热镜像 | 拉取失败签名命中 | 中 |
+| 调整并发上限 / 改 scale set values | ❌ 不自动 | 改配置一律走人 |
 
-> ⚠️ 上表是**待评审的初判**，不是结论。#2080 的架构设计阶段会逐条过；本文只提供**分类维度**。
-> **主导型 CI 要另过一遍**——它的故障面完全不同（见 §2.5）。
+推进必须分三档，且每档有退出条件：
 
----
+1. **shadow**：只输出建议，不执行；跑满四周，统计建议被采纳的比例；
+2. **approval**：推送到 IM/邮件，一键确认执行；
+3. **auto**：仅对通过 shadow 与 approval 验证、误判率低于阈值的动作开放。
 
-## 2. 主导型社区 CI——本次只做 openEuler 仍在用的 Jenkins 门禁
+护栏（缺一条不上线）：动作幂等 + 冷却期 + 单 run 重跑次数上限；全量审计日志；熔断（自动动作后问题仍存在的比例超阈值即停用该类动作）；主干与发布窗口内不自动执行。
 
-> **范围声明**：主导型社区内部**两代并存**（§0 表格已并列写出），但**本次只做 openEuler 这一种 Jenkins CI 的可观测**——
-> 它是主导型社区里**唯一还不在 K8s 上**的 CI，也是**唯一没有任何现成可观测手段**的一支。
->
-> 主导型 CI 的其余社区（**openUBMC、CANN、MindSpore、Ascend** 等）已全部迁到 **openlibing + 华为云 CodeArts**，
-> 其实际执行载体是 **Argo Workflow（跑在 K8s 上）**，CodeArts 只做触发与 UI
-> （`codearts-workflow-image` 容器内用 `convertorv2` 把流水线 YAML 转成 Argo Workflow，再 `argo submit` 到目标集群）。
-> **这一支本次不做**——它和参与型 CI 一样落在 K8s 上，可观测手段更接近参与型 CI，不是本次要补的洞。
-> 因此**下面 §2.2 起的所有链路细节与 J1–J5 指标，都只针对旧 Jenkins 门禁**，不要套到 CodeArts 那一支上。
->
-> 依据：`agent-development-specification/projects/docs/07-services/ci-all.md`
-> （L77「**CodeArts 流水线接管后，新业务不再加 Jenkins**」；L78 / L135：`codearts-ci-config` 覆盖**70+ 仓**；L86：CodeArts → Argo Workflow 的转换）。
+### 4.5 效果评估（L5）
 
-### 2.1 目标：主导型 CI 要回答的四个问题
-
-主导型 CI 的痛点和参与型 CI **不重叠**：用户不会怀疑"门禁在偷偷占着贵卡"（没有卡），痛的是**结果可不可信、挂了看不看得懂**。
-但它**同样会排队**——构建机不够用、Jenkins 执行器被占满，PR 一样要等，所以 Q1 仍然是"多久出结果"。
-**主导型 CI 里没有"资源值不值"这一问**：构建机利用率本期不做（与参与型 CI 同一条原则），
-所以下面四问**一条都不用划**，但它们要落在"问题发现与解决"上，而不是"省钱"上：
-
-| # | 在问什么 | 现在能不能回答 | 目标口径 |
-| --- | --- | --- | --- |
-| Q1 | **我的 PR 门禁多久出结果？** | ❌ 只有"超时"这类点告警，没有分布 | 门禁**总时长**（提交 → 出结论）P50 / P95 可查、可按仓库下钻 |
-| Q2 | **挂了——挂在哪个检查项？** | ❌ 只有红/绿标签，原因要人工翻 Jenkins 控制台 | 成败可按**检查项**（`check_*` / `compare_package`）下钻；失败**有结构化原因** |
-| Q3 | **这个结论可信吗？**（**属于"问题发现"，不是"省钱"**） | ❌ 误报只能事后人工打 `/ci_mistake` | **误报率**可算（由 `/ci_mistake` 反推）；**结果未返回率**（`build_exception`）可算且**单独告警** |
-| Q4 | **现在整体健康吗？** | ❌ **零**——这正是国庆事故那一处 | **大面积集中失败在用户报障前被发现**（滑动窗口成功率跌破阈值即告警） |
-
-> **主导型 CI 的 Q3 为什么保留**：它问的不是"资源花得值不值"，而是"**门禁这个动作本身有没有悄悄坏掉**"——
-> 结果没返回、误报率高，都是**待发现的问题**，正是本期"问题发现与解决"要覆盖的那一类。
-> 参与型 CI 划掉的是 Q3 **资源利用率**，两者不是同一件事，不要按编号对齐。
-
-> **Q3 / Q4 是主导型 CI 的两个"只有这类 CI 才有"的问题。**
-> Q3 的来源：门禁会因基础设施原因**返回不了结果**——用户拿到一个既不红也不绿的悬空状态，只能反复 rebase 或求人；
-> 而现有体系对"结果没回来"和"结果回来了且通过"**没有任何区分**。
-> Q4 的来源：backlog#1938 最后一条评论的结论原话——「**缺少根据最终结果性判断，比如出现大批量集中失败**」。
-
-### 2.2 链路与判定点
-
-| 环节 | 实体 |
-| --- | --- |
-| 托管 | GitCode（openEuler / src-openeuler 两个 org） |
-| 门禁入口 | Jenkins `https://openeulerjenkins.osinfra.cn/job/Infra/job/community_check_v2/` |
-| 门禁代码 | `openeuler/openeuler-jenkins`（按仓四类 job：`trigger` / `x86-64` / `aarch64` / `comment`） |
-| 状态回写 | ci-bot 标签 `ci_processing` → `ci_successful` / `ci_failed` |
-| **失败出口** | **人工深入 Jenkins 构建控制台** |
-| 误报标记 | `/ci_mistake build_no <mistake_type> <ci_mistake_stage>` |
-
-> ⚠️ **这张表只覆盖 openEuler / src-openeuler 的 Jenkins 门禁，也就是本次唯一要做的这一支。**
-> 它不覆盖：① 主导型社区里走 **openlibing + CodeArts → Argo Workflow** 的那些（**openUBMC / CANN / MindSpore / Ascend** 等，本次不做）；
-> ② **MindSpore 历史上残留的独立 Jenkins 实例**（`mindspore-jenkins`，ArgoCD app `mindspore-jenkins-master`，日志入口 `build-log.mindspore.cn`），
-> 它与 `community_check_v2` 不是同一套，**本次同样不做**——只在盘点制品时作为 `jenkins-log-viewer` 的宿主出现（§2.3）。
-
-**检查项清单**（这是主导型 CI 的"阶段"维度，等价于参与型 CI 的 C4 阶段）：
-
-| 社区 | 检查项 |
-| --- | --- |
-| **src-openeuler** | `check_binary_file`、`check_package_license`、`check_package_yaml_file`、`check_spec_file`、`check_consistency`、`check_build`、`check_install`、`compare_package`（+17 个 interface-change 子项：add_rpms、delete_rpms、kabi、drive_kabi、kconfig、ko、rpm_files、rpm_provides、rpm_requires、rpm_abi、rpm_jabi、rpm_cmd、rpm_config、rpm_header、rpm_service、rpm_lib、rpm_symbol） |
-| **openEuler** | `check_code`（→ majun / openlibing）、`check_sca`、`check_package_license`、x86-64 / aarch64 构建 |
-
-**门禁的触发与回写由 openEuler 侧的 ci-bot 承担，不在本仓可见范围**——本文只需知道它的两个产物：
-进入门禁时打 `ci_processing`，出结论时打 `ci_successful` / `ci_failed`（均见上表）。
-**生产方（谁在什么时候写标签、依据是哪次构建的哪个结果）不在本地**，这决定了两件事：
-
-- Q2 要的"结构化失败原因"**不能从标签反推**，只能从门禁侧自己埋点产出；
-- §2.4 里 `no_result` 的**分母**暂时拿不到，只能先用 `/ci_mistake build_exception` 反推（§3 待确认项 5）。
-
-### 2.3 现状：已有四件制品，但全是离线批处理看板；监控接入为零
-
-| 制品 | 是什么 | 性质 |
+| 指标 | 含义 | 目标 |
 | --- | --- | --- |
-| **`openeuler_cicd_dashboard`** | GitCode 元数据 + PR 门禁构建记录 + Jenkins 数据。组织概览（openEuler / src-openeuler 双 tab、7 / 14 / 30 天筛选、最近构建 / 平均 / 中位 / P90 / 成功率）；单仓详情（门禁通过率环形图、**Jenkins 排队等待 + 各阶段耗时**、`check_code` / `check_sca` 徽章、`compare_package` 窗口）；Night 版本级流水线。原生 HTML/CSS/JS + Python 标准库，零依赖 | **离线批处理看板** |
-| **门禁结果与误报看板** | `openlibing-beta.osinfra.cn/develop/incrementView` | 看板 |
-| **`PipeLine_DashBoard`** | gitcode.com/yejianping/PipeLine_DashBoard，Flask；GitCode MR + Jenkins JSON API；数据模型 Pipeline / Stage / MergeRequest / MRBuildInfo | 看板 |
-| **`jenkins-log-viewer`**（[backlog#1144](https://github.com/opensourceways/backlog/issues/1144)） | MindSpore 的 `build-log.mindspore.cn`（测试环境 `jenkins-log-viewer.test.osinfra.cn`）；Go+Gin 代理 Jenkins REST（`/api/build/info`、`/api/build/log`、`/api/build/list`、`/api/healthz`）。**明确声明「不接触 GitCode」**，PR-Jenkins 关联由机器人在 PR 评论里贴 URL | 日志跳转入口 |
+| MTTD | 故障发生到告警 | ≤ 2 分钟（结果类）/ ≤ 7 分钟（排队类） |
+| MTTR | 故障发生到恢复 | 按类别设定，基础设施类 ≤ 30 分钟 |
+| 自愈成功率 | 自动动作后问题消失的比例 | 先观察，不设硬指标 |
+| 误判率 | 自动动作后问题仍在 / 被人回滚 | < 30%，超阈值熔断 |
+| 重复失败率 | 同一签名在同仓反复出现 | 下降趋势，用于验证根因是否真被修掉 |
 
-> `openeuler_cicd_dashboard` 的细节来自公开索引，**未能直接抓取**（`raw.gitcode.com` 403、`api.gitcode.com` 401 需 token），引用前建议核一遍。
+## 5. 技术选型与借鉴
 
-**但这四件都是「人去看（且事后批处理）的看板」，不是「会自己叫的监控」。**
+### 5.1 可直接借鉴
 
-### 2.4 目标指标：最小必须集 J1–J5
-
-与参与型 CI 一一对应（"阶段维度"换成"检查项维度"；**两边都没有"资源利用率"这一组**——参与型 CI 的 C3 本期不做，
-主导型 CI 也没有对应的 J）：
-
-| # | 问题 | 产出的信号 | 对应目标 |
-| --- | --- | --- | --- |
-| **J1** | 从提交到出结论**多久**？ | 门禁时长 Histogram（**排队段 + 执行段分开**，排队段是 Jenkins `queue` 时间）+ 队列深度 Gauge | Q1 |
-| **J2** | 结果**是什么**、卡在**哪个检查项**？ | 门禁结果 Counter（带 `result`）+ **检查项维度**的失败 Counter | Q2 |
-| **J3** | 结果**可信吗**？ | 误报 Counter（由 `/ci_mistake` 反推）+ **结果未返回 Counter**（`build_exception`） | Q3 |
-| **J4** | 整体**崩没崩**？ | 「窗口内成功率」记录规则 + 告警（环比基线跌破即响） | Q4 |
-| **J5** | 每条链路上**至少一个无条件 set 的 gauge** | — | 防"全静默 = 全成功" |
-
-**J3 是主导型 CI 的重点，也是参与型 CI 完全没有的东西。** 它要单独成一个信号，不能混进 J2 的 `result`：
-
-```
-门禁结果三态（而不是二态）：
-  success      ── 结果返回了，且通过
-  failure      ── 结果返回了，且不通过
-  no_result    ── 结果没返回 ← 现在既不算红也不算绿，无人知晓
-```
-
-`no_result` 对应的就是 `/ci_mistake` 里的 `build_exception`——**用户被迫用"打误报标记"这个人工动作来告诉运维"门禁没出结果"**。
-把 `build_exception` 的**标记量**当成一个可观测信号（它本身就是用户侧上报的故障率），是这类 CI 上最便宜的一个起点。
-
-**J4 的形态**（参与型 CI 没有、主导型 CI 必需）：不看单个 job，看**窗口内的整体**——
-
-```
-rate(门禁结果[15m]) 按 result=failure / 总体      ── 跌破基线即告警
-       或
-最近 N 分钟内 no_result 占比                      ── 超过阈值即告警
-```
-
-> 这正是"大批量集中失败"能被自动发现的最小实现。**注意它是记录规则（recording rule）+ 告警，不是一个 Counter**——
-> 单条 Counter 永远看不出"集中"，必须有一个按窗口聚合的视图，才有资格叫"结果性判断"。
-
-**两个取数盲区（对应参与型 CI §1.3 的"两段排队"）：**
-
-**一个必须提前定的高基数问题**：`repo` 能不能当 label？
-
-- src-openeuler / openEuler 的仓库数量在**千级**，直接当 metrics label 会明显抬高时序基数。
-- **建议**：metrics 侧只到 `org` + `check_type` + `result` 这些低基数维度；
-  **`repo` 级的下钻落到看板 / 日志查询**（`openeuler_cicd_dashboard` 那类离线看板正好补这个位置），**不进 metrics label**。
-  这条如果定了，主导型 CI 与参与型 CI 的分工也就清楚了：**metrics 管"整体崩没崩"，看板管"是哪个仓库"。**
-- 这是 §3 待确认项 3。
-
-### 2.5 自助分级按检查项重新过一遍（主导型 CI）
-
-参与型 CI 的 §1.4 三档表**不能直接搬**——它的故障面是 NPU 作业，主导型 CI 的是 RPM 包与合规检查。
-按 §2.2 的检查项重列（同样是**待评审的初判**）：
-
-| 检查项 | 典型故障 | 初判档位 |
+| 方案 | 用在哪一层 | 说明 |
 | --- | --- | --- |
-| `check_package_license` / `check_spec_file` / `check_package_yaml_file` | spec / yaml 写法不合规 | ② 用户可自助（给出具体行号与规则） |
-| `check_consistency` | 与上游版本不一致 | ② 用户可自助 |
-| `check_binary_file` | 提交了二进制文件 | ② 用户可自助 |
-| `compare_package`（17 子项） | kabi / rpm_requires / ko 等 interface 变更 | ③ 需人工（**但要给出结构化 diff**，否则用户完全无从下手） |
-| `check_code` / `check_sca` | 代码扫描 / 开源合规告警 | ② 用户可自助（指向 majun / openlibing 报告） |
-| **任意检查项 + `no_result`** | **门禁结果没返回**（净室白名单、构建机资源、Jenkins 自身） | ③ 需人工 + **① 可自愈**（能自愈的先自愈，且必须通知用户"重跑即可"） |
+| **OTel CI/CD 语义约定** | L0 | 字段命名对齐；成熟度 RC，`run.id` 不进 metric label |
+| **Argo Events + Argo Workflows** | L4 | 已在用 ArgoCD，事件驱动自愈编排成本最低，无需引入新运行时 |
+| **Kubernetes operator 模式** | L4 | 自研 remediation controller 的骨架，动作白名单、状态机、审计都按 CRD 表达 |
+| **cluster-autoscaler / Karpenter** | L4 | 节点池扩缩；runner 扩缩仍由 ARC scale set 负责 |
+| **OpenKruise** | L4 | 原地重启、PodProbeMarker，适合安全重启而不是删了重建 |
+| **Develocity Build Scans 思路** | L3 | 构建耗时与缓存命中率的回归检测，触发「构建变慢」类告警 |
+| **依赖图谱思路（Netflix Astrid）** | L3 | 把源码仓、依赖包、基础镜像、runner 视为有向图，失败时沿依赖回溯 |
 
-> 最后一行的分叉是主导型 CI 特有的一档：**同一个检查项，`failure` 归用户，`no_result` 归基础设施**。
-> 不做这个分叉，"门禁挂了"会被当成"你的包有问题"派给用户——这是国庆那类事故里最伤用户信任的一种表现。
+### 5.2 谨慎或不用
 
----
+| 方案 | 问题 |
+| --- | --- |
+| **Keptn** | 2025 年 9 月已被 CNCF 归档，不再作为选型依据 |
+| **StackStorm** | 能力可用，但会多养一个运行时；Argo Events 已能覆盖 |
+| **Karmada / Volcano** | 不是 runner 扩缩容工具：Karmada 是多集群分发，Volcano 是批处理调度。runner 扩缩在 ARC scale set + 节点池 |
+| **Netflix「Open_CI」** | 查无此项目；Netflix 实际是 Develocity Build Scans、Astrid、Spinnaker Builds。借鉴思想即可，不要引用不存在的项目 |
+| **eBPF（OBI / Beyla）** | 能补 DNS 与连接拒绝的证据，但出网问题主要在 squid 与 registry，已有指标覆盖；优先级最低 |
+| **商业 AI SRE（Datadog Bits 等）** | 方法论一致（富化后的遥测 + 关联 + 假设排序），差别在数据覆盖而非模型；不引入平台，只借鉴形态 |
 
-## 3. 评审待确认项
+## 6. 分期与门槛
 
-| # | 待确认 | 建议 | 责任方 |
+| 能力 | 依赖数据 | 期次 | 进入门槛 |
 | --- | --- | --- | --- |
-| 1 | **参与型 CI · C1 段一（未分配 runner 的排队）怎么取数**（§1.3 末） | GitHub API / webhook 二选一；需确认速率限制与 token 权限。也可等 `arc-fedsched` dispatcher 就绪后由它统一给——它已带 `wait_seconds` / `queued_seconds_total` 等指标 | 待定 |
-| 2 | **参与型 CI · §1.4 三档分类的初判** | 由 #2080 架构设计阶段逐条过审，本文只给维度 | ascend-ci 项目 |
-| 3 | **主导型 CI · `repo` 是否进 metrics label**（§2.4 末） | 建议**不进**：metrics 只到 `org` / `check_type` / `result`，`repo` 级下钻交给看板。定了这条，主导型 CI 的 metrics 与看板分工就清楚了 | 待定 |
-| 4 | **主导型 CI · 指标落在哪**（§2.3） | 门禁集群 `openeuler-ci-cn4-cluster` 无监控栈，三种选择：复用 ns `infra-monitoring` / 给门禁集群配 Agent / 先只在门禁侧做轻量 exporter。**这是主导型 CI 的前置问题** | 基础设施组 |
-| 5 | **主导型 CI · `no_result` 的分母从哪来**（§2.4） | 需要确认"**谁写出 `ci_processing` / `ci_successful` / `ci_failed` 标签**"——这个生产方**不在本仓可见范围**（§2.2）。定位到它之前，`no_result` 只能靠 `/ci_mistake build_exception` 反推 | 待定 |
-| 6 | **主导型 CI · 门禁的无条件 gauge 埋在哪**（J5） | 门禁侧目前连"链路还活着"的常驻信号都没有；先定这个 gauge 落在哪（门禁 exporter / 事件侧），再谈 J1–J4 | 待定 |
-| 7 | **本文的落点拆解**：参与型 CI 落在 `ascend-ci-deployment`（监控 / 告警 / 自愈）、`runner-container-hooks`（错误信息）、`ascend-runner-onboarding`（自动化）、`ascend-gha-runners/arc-fedsched`（调度指标）；**主导型 CI 暂无对应仓** | 与 #2080 的工作量估算（约 15~20 人天，**只覆盖参与型 CI**）分开排期，本文不做拆分 | 基础设施组 |
-| 8 | ~~**主导型 CI 要不要"构建机利用率"这类指标**（§0.1 / §2.4）~~ | **本期不做**（本文目标不含资源利用率，见文首声明）。主导型 CI 的资源信号用 J1 的排队段就够；**"构建机到底够不够用"这件事靠排队时长变长就能发现**，不需要利用率这个派生数。若将来确实要以容量为专题立项，再补"执行器占用 / 排队"的上限类指标（不是利用率下限）——**但那不在本期** | — |
+| 结果 / 在途检测、失败率与排队告警 | 一期指标 | 一期 | — |
+| 变更关联根因（「最近改了什么」） | GitOps 时间线 | 可与二期并行 | 变更覆盖率 ≥ 90% |
+| 资源型根因（没卡、池满、节点坏） | 二期 listener 容量指标 | 二期 | 各集群已接入 scrape |
+| 精确 RCA（run → Pod → 节点） | run 身份 + Pod 生命周期 + k8s event | 三期 | run 身份覆盖率 ≥ 90% |
+| 自愈：重跑 / 清理 / 重建 | 三期事件 + 动作权限 | 三期后段 | shadow 满四周且建议采纳率达标 |
+| 自动自愈白名单 | 上述全部 | 四期 | 误判率连续两周低于阈值 |
 
----
+**三个覆盖率指标**（run 身份、Pod 事件、变更）是判断路线是否走偏的硬指标。任何一项没到约 90%，RCA 与自愈都只能是演示。
 
-## 附：本文引用的实测依据
+## 7. 边界与风险
 
-### 参与型 CI
+- **CI 失败的主体是代码与测试**，基础设施类只占少数。目标定的应是「把基础设施类故障的发现与恢复做快」，而不是「让所有失败都能自愈」。
+- **自愈可能掩盖故障**：自动重跑会让真实回归变成间歇失败。因此重跑必须限次，且「重跑后仍失败」与「重跑后成功」要分开计数。
+- **GitCode 侧能力不完整**：没有 EphemeralRunner 与 ghalistener，L2 之后的分析在一期只能覆盖 GitHub 半边，接入前需实测其 API 能提供的事件粒度。
+- **单点与静默失效**：aggregator 单副本、凭据过期会让采集静默归零。自监控告警必须先于 RCA 上线（见指南 5.2.3）。
+- **不要先上 LLM**：没有签名库与拓扑关联时，模型只会给出无法验证的解释。
 
-| 依据 | 来源 |
-| --- | --- |
-| 拨测 9 类、链路形态、集群清单 | `ascend-ci-deployment/monitoring/README.md`、`monitoring/base/cronjob-*.yaml` |
-| 现有告警 31 条 | `ascend-ci-deployment/monitoring/config-for-infra-cn4-x86-common-cluster/prometheus-rules.yaml` |
-| 告警只发运维个人邮箱 | `monitoring/config-for-infra-cn4-x86-common-cluster/alertmanager-config-secret.yaml` |
-| ARC 官方大盘面板 | `ascend-ci-deployment/manifests/grafana/grafana-dashboard-arc.yaml` |
-| 排队分布**已有**但未算分位数；`RunnerPodPendingTooLong` 为 `for: 35m` | `ascend-ci-deployment/projects/*/*/values.yaml`（`histograms: gha_job_startup_duration_seconds`，45 桶）、同上大盘的 `Startup Duration` 面板、`monitoring/config-for-infra-cn4-x86-common-cluster/prometheus-rules.yaml:734` |
-| 段一需 GitHub 侧 queue time（非推测） | `arc-fedsched/pkg/metrics/metrics.go`（`wait_from_arrival_seconds` 的 Help 文案） |
-| 两个 10 min / 30% 的验收标准（**30% 那条本期不纳入**） | [backlog#1874](https://github.com/opensourceways/backlog/issues/1874) 里程碑 2 与验收标准 |
-| 自愈 ≥ 80% / SRE -60% / 三档 / 四个模块 | [backlog#2080](https://github.com/opensourceways/backlog/issues/2080) 验收标准与其需求分析说明书 |
-| dispatcher 将带来的排队 / 容量指标 | `arc-fedsched/pkg/metrics/metrics.go`（ns `arcfed`：`wait_seconds`、`queued_seconds_total`、`head_blocked_seconds_total`、`node_free_seconds_total`、`cluster_units_free` …） |
+## 8. 待决事项
 
-### 主导型 CI
-
-| 依据 | 来源 |
-| --- | --- |
-| 门禁架构、四类 job、误报标记语法、检查项清单 | `openeuler/openeuler-jenkins`；`openeulerjenkins.osinfra.cn/job/Infra/job/community_check_v2/` |
-| 误报看板 URL | `openlibing-beta.osinfra.cn/develop/incrementView` |
-| `openeuler_cicd_dashboard` 数据模型与指标（**来自公开索引，未直接抓取**） | GitCode `openeuler_cicd_dashboard`（`raw.gitcode.com` 403 / `api.gitcode.com` 401，引用前请复核） |
-| `PipeLine_DashBoard` | gitcode.com/yejianping/PipeLine_DashBoard |
-| `jenkins-log-viewer` 形态与"不接触 GitCode" | [backlog#1144](https://github.com/opensourceways/backlog/issues/1144) 需求分析与架构设计说明书 |
-| 门禁侧无作业层采集：本地两个 Jenkins 脚本只取时间戳与日志 | `infrastructure/scripts/fetch_jenkins.py`、`infrastructure/scripts/scan_jenkins_logs.py` |
-| 门禁侧无监控接入：Jenkins 无 prometheus 插件、Agent 不抓 Jenkins、门禁集群零监控栈 | `infra-common/common-applications/control/jenkins/deployment.yaml`、`.../openeuler-cn-north4-jenkins/monitor-agent/prometheus.yml`、`infra-community/helm-charts/openeuler-ci-cn4-cluster/`（`jenkins.yaml` + `project.yaml`） |
-| 告警 31 条只覆盖参与型 CI，无一条指向主导型 CI；大盘里无门禁大盘 | 参与型 CI 的 `prometheus-rules.yaml`；`helm-chart-value-osw/common/grafana/prod/values-dashboards.yaml` |
-| 主导型 CI 侧无故障归因资料 | `general/昇腾失败原因分析/`（全部针对 GitHub Actions + NPU） |
-| 缺结果性判断 | [backlog#1938](https://github.com/opensourceways/backlog/issues/1938) 最后一条评论 |
-| `ci_successful` / `ci_failed` 的**消费方**（生产方不可见） | `agent-development-specification/projects/docs/07-services/software-package.md` L100、`software-package-all.md` L119 / L160（gateway 监听 PR label 推进状态机） |
-| 主导型 CI 调研全文 | [backlog#2080 评论](https://github.com/opensourceways/backlog/issues/2080#issuecomment-6081591152) |
+1. 是否将内部字段与 OTel CI/CD 语义约定做正式映射（参考 `spec/otlp-mapping.md` 的做法）。
+2. remediation controller 自研 operator，还是用 Argo Events + Workflows 编排。
+3. 三期 event agent 能否拿到 Pod 创建 / Ready 时刻——这是拆分 ②扩容 / ③启动 的唯一来源。
+4. GitCode 侧是否需要独立的失败分类与自愈策略，还是先只做观测。
