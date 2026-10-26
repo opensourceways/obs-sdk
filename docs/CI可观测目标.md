@@ -16,7 +16,7 @@
 ### 1.2 现状基线
 
 - **一期**（aggregator）：run/job 结果与耗时、在途排队与执行、三条轮询路径、结果级告警。
-- **二期**（ghalistener / 集群侧）：容量 gauge、②+③ 启动耗时、④ 执行耗时。
+- **二期**（ghalistener / 集群侧）：容量 gauge、启动耗时（扩容到就绪）、执行耗时。
 - **三期**（ci-event-agent）：run 身份、重跑补齐、Pod 生命周期事件。
 
 L2 与 L3 都建立在三期之上——**没有 run 身份，根因分析只能到「某个仓的某个 workflow」这一层**。
@@ -63,7 +63,7 @@ L0 语义         统一身份与字段：run_id / job_id / platform / repo / wo
 | 信号 | 内容 | 来源 | 期次 |
 | --- | --- | --- | --- |
 | **run 身份贯穿** | EphemeralRunner / runner Pod 打上 `run_id`、`job_id`（pod label 或 annotation），让 LTS 里的日志能按 run 检索 | 定制 ARC 写入 + event agent | 三期 |
-| **Pod 生命周期** | Pending → Created → Ready → Completed 的时刻与状态，用来拆分 ②扩容 / ③启动 | ci-event-agent watch EphemeralRunner + Pod | 三期 |
+| **Pod 生命周期** | Pending → Created → Ready → Completed 的时刻与状态，用来拆分扩容与启动两段 | ci-event-agent watch EphemeralRunner + Pod | 三期 |
 | **k8s 事件** | `FailedScheduling` / `FailedMount` / `ErrImagePull` / `OOMKilled` / `Unhealthy` | kube-event exporter | 三期 |
 | **变更时间线** | values/chart 版本、runner 版本、节点池扩缩、镜像源切换时刻 | GitOps commit 历史 + 发布记录 | 可提前，成本最低 |
 
@@ -90,7 +90,7 @@ L0 语义         统一身份与字段：run_id / job_id / platform / repo / wo
 
 按性价比排序的三板斧：
 
-1. **阶段定位**：先看卡在 ①平台排队 / ②③启动 / ④执行。①→并发或配额；②③→节点资源、镜像、挂载、网络；④→代码或资源超时。这一步就能砍掉一半排查面。
+1. **阶段定位**：先看卡在平台排队、扩容与启动、还是任务执行。排队→并发或配额；扩容与启动→节点资源、镜像、挂载、网络；执行→代码或资源超时。这一步就能砍掉一半排查面。
 2. **签名匹配**：从 job 日志抽取错误模板并归类（正则/SQL 聚类），先覆盖高频签名，规则库够到七成即可，剩余再上统计。
 3. **相关性归因**：多仓、多 workflow 在同一时间窗同时失败 → 平台侧；单仓单 workflow → 代码或该仓配置。「最近一小时内改过什么」作为最强的佐证。
 
@@ -179,5 +179,5 @@ L0 语义         统一身份与字段：run_id / job_id / platform / repo / wo
 
 1. 是否将内部字段与 OTel CI/CD 语义约定做正式映射（参考 `spec/otlp-mapping.md` 的做法）。
 2. remediation controller 自研 operator，还是用 Argo Events + Workflows 编排。
-3. 三期 event agent 能否拿到 Pod 创建 / Ready 时刻——这是拆分 ②扩容 / ③启动 的唯一来源。
+3. 三期 event agent 能否拿到 Pod 创建 / Ready 时刻——这是拆分扩容与启动两段的唯一来源。
 4. GitCode 侧是否需要独立的失败分类与自愈策略，还是先只做观测。
