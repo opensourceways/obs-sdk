@@ -90,7 +90,7 @@
   - `preview`：hk-003 + 独立 ns `ci-observability`，**不需要 ingress**（两个组件都没有外部入口，只有 `/metrics`）
   - `release.deploy: argocd`；**两个子仓各一个部署子目录 / 各一个 ArgoCD Application**（`ci-observability/aggregator/`、`ci-observability/exporter/`），`format: kustomize` + 逐行 `image_names` 把子仓名映射到各自 `images[].name`。引擎的 kustomize 归档本来就是**按 sub 各自找 kustomization**（apply_tag_sync.py 注释明说「每个 sub 可能有独立的 kustomization.yaml 在不同子目录下」），塞进同一份 kustomization 是没被人走过的那条路
   - `argocd.pod_selector` 用**两个 Deployment 共打的** `app.kubernetes.io/part-of=ci-observability`——只匹配单个组件的话，另一个组件的镜像替换不会被校验，会「绿着但没部署」
-  - 同一 ns `ci-observability`，但 Deployment 分开：aggregator 单副本 + PVC + `strategy: Recreate`，exporter 无状态可多副本
+  - 同一 ns `ci-observability`，但 **Deployment 分开、两块 PVC 分开**：两个子仓都是**常驻微服务**（各自 Deployment / Service / 凭据 Secret / 自监控 / 健康探针），「exporter」只是**职责命名**（对外部系统做指标适配），不是部署形态上的简化。两者都单副本 + `strategy: Recreate` + 1Gi PVC：aggregator 存 `state.json`，exporter 存 **build number 水位线**（不持久化则每次重启把最近 N 条 build 重数一遍，`jenkins_build_result_total` 虚高——见接入指南 §6.1.2）。**不能共用一块 PVC**（RWO 要求两个 Pod 落同一节点，是运气不是设计）
   - **infra-common/service.md 每个子仓每环境各留一行**（镜像名 / 归档子路径 / 镜像版本路径 / 归档方式）：镜像路径与归档目标是这张表的「单一事实来源」，缺行 ⇒ 该子仓**不构建也不归档，且不报错**
   - **每个子仓根目录必须有 Dockerfile**：构建循环是 `[ -f "$smpath/Dockerfile" ] || continue`，没有就静默跳过；镜像仓名取**子仓名小写**
   - ⚠️ 引擎用的是 `git submodule update --init --recursive --remote`：**构建跟子仓分支头，不跟 umbrella 钉的 SHA**，umbrella 的 commit 不是发布快照，回滚按镜像 tag 走；子仓合入**不需要**回 umbrella 提指针 PR
