@@ -42,8 +42,28 @@
 
   与设计文档的三处矛盾（待同步改设计，见回复）：job 是否嵌套、`FAILED(...)` 解析、`event` 取值映射。
 - [ ] **preview / test 是否可挂 PVC**：不可挂就让状态落 `emptyDir`、允许「重启不回填」（一期语义允许）。
-- [ ] **失败口径单一实现**：`failure|timed_out|startup_failure` 计失败；`action_required` 不进分母。告警、连续失败、大盘共用同一函数。
-- [ ] **workflow 排除清单初版**（标签/评论机器人、scorecard/trivy、发布构建类），随配置下发不写死。
+- [x] **失败口径单一实现**（已定）：在**归一后的 conclusion 枚举**上实现唯一一个函数，告警（L1/L2/L2′/L4）、连续失败、大盘共用；平台原值先映射、再判定，不在查询里各写各的。
+
+  | 归类 | GitHub 原值 | GitCode 原值 |
+  | --- | --- | --- |
+  | **计失败** | `failure` `timed_out` `startup_failure` | `FAILED` |
+  | 不计失败、**进分母** | `success` `cancelled` `skipped` `neutral` `stale` | `COMPLETED` `CANCELED` `IGNORED` |
+  | 不计失败、**不进分母** | `action_required`（等人工批准，从未执行） | —（无对应取值） |
+  | **未知取值** | 原样透传：不算失败，但**留在分母**，靠 `conclusion` label 原值暴露 | 同左 |
+
+  未知取值留在分母而不是剔除：剔除会让平台新增取值时分母静默变小、失败率虚高；留下则不改变比率，且新取值会以大字段原值出现在大盘上，能被发现。`action_required` 是唯一例外——它从未执行，计入会稀释失败率。
+- [x] **workflow 排除清单初版**（已定）：走 values 的 `exclude_workflows[]` **配置下发，不写死在代码里**；按归一后的 `workflow` 身份**精确匹配**（GitHub 取 `run.path` 文件名去扩展名，GitCode 取 `file_path` 文件名去扩展名，如 `.gitcode/workflows/PR-pipeline_pytorch.yml` → `PR-pipeline_pytorch`），**不做前缀/正则模糊匹配**——模糊匹配在 workflow 改名后会静默误伤。剔除点定在**归一化之后、状态层之前**：不进 state、不进任何 `ci_workflow_*` 序列，因此也不占后续轮询配额。
+
+  初版四类（量级依据见设计 §3.1 与 §4.1 的实测）：
+
+  | 类别 | 例 | 为什么排除 |
+  | --- | --- | --- |
+  | 标签 / 评论 / 欢迎机器人 | `community-labels`、`stale_manage`、`Ready Label`、`pr-title-check` | 失败多半是 token 过期，不代表 CI 健康；实测 `community-labels` 占 vllm-project L2 原始 30 趟里的 10 趟 |
+  | 安全扫描 | scorecard、trivy、codeql 类 | 红常由规则库更新或上游驱动，不是代码回归 |
+  | 发布构建 | 带 `release` / `publish` / `image` 语义的流水线 | 发布失败另有处理链路，混进门禁会让 L2 指向错误的处理人 |
+  | 纯文档 / 格式 | doc-only 的 lint / format workflow（可选，按仓逐个确认） | 与构建健康度无关，且极易被 bot 触发 |
+
+  清单随仓库清单一起演进：新增 workflow 默认**采集**，排除必须显式加配置——宁可多看几条，不要因默认排除漏掉真回归。
 
 ## 1. 工程骨架
 
