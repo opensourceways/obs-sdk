@@ -11,10 +11,32 @@ Prometheus 指标命名规则基础上追加组织约束：
 - 指标名全小写，`snake_case`，单位后缀遵循 Prometheus 约定（`_total` / `_seconds` / `_bytes` / `_count` / `_sum`）。
 - **业务指标强制前缀**：`<service>_`（service 短名，服务唯一）。例：`robot-universal-review_http_requests_total` → 简写 `review_http_requests_total`。
   - 也可按服务内子系统细分：`<service>_<subsystem>_<name>_<unit>`。
+- **领域共享指标可用 `<domain>_` 前缀**：当一类指标表达的是**同一件事实**、且可能由**多个组件或多条采集路径**产出时，
+  用领域前缀而不是某个服务的短名。例：`ci_workflow_*`——一期由 `ci-workflow-aggregator` 轮询入账，
+  三期由 `ci-event-agent` 补齐重跑与精确完成时刻，两者落的是同一批事实。
+  允许用领域前缀的前提有三条，缺一条就退化为「按服务加前缀」：
+  1. **同一事实同名同 schema**：不同路径观测同一事实时，指标名、类型、单位、**label 名集合完全一致**，
+     来源差异靠 `source` 这类 label 表达，**不靠改名区分**。同名不同 schema 会让 `sum by` / 选择器出
+     只有部分序列命中的静默错误。
+  2. **单点入账**：跨路径的同一事实必须**在一个记账方合并后再暴露**（如事件路径把事件推给 aggregator，
+     按幂等键去重后由 aggregator 唯一一次 `Inc()`）。**禁止各组件各自对同一事实计数**——同一个 run
+     被两条路径各记一次，`sum()` 直接翻倍，且不报错、不上限。
+  3. **不同事实不同名**：另一类测量（例：集群侧容量的 `gha_*`）不得蹭领域前缀，那是另一个事实、
+     另一组生产者。**上游组件自带的指标名（如 ghalistener 的 `gha_*`）SDK 不改名**，与上一条一致。
 - **中间件公共指标不加任何前缀**，直接用 `http_server_*` 这类通用名（见下节表）。既不加 `<service>_`，也不加 SDK 保留前缀（如 `obs_`）：
   - 同一条时间序列已带 `service` label，查询按 label 过滤 —— 名字里再编一遍前缀是重复信息；
   - 带上前缀会让「同一指标名下的跨服务查询」失效，每个服务得各写一套名字；
   - Actuator / Micrometer 等**官方 instrumentation 的默认名不带这类前缀**（如 `http_server_requests_seconds`），自造前缀需要额外做一层名字映射，与「薄封装、不自研 instrumentation」冲突。
+
+### 已登记的领域前缀
+
+领域前缀必须登记，避免两个领域撞名，或同一个前缀被两拨人各自定义：
+
+| 前缀 | 覆盖的事实 | 生产者 | 定义处 |
+| --- | --- | --- | --- |
+| `ci_workflow_` | CI workflow run / job 的结果、耗时、在途与采集自监控（`platform` 区分 GitHub / GitCode） | 一期 `ci-workflow-aggregator`（`source="poll"`）；三期 `ci-event-agent` 经 aggregator 入账（`source="event"`），**自身不暴露业务指标** | [CI workflow 可观测技术设计](../docs/CI%20workflow可观测技术设计.md) §2 |
+
+> 新增领域前缀时在本表加一行，并在设计文档里写清「同一事实」的边界与唯一记账方。
 
 ## 通用 label 集（每个时间序列必须带）
 

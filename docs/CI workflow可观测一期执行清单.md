@@ -23,7 +23,7 @@
 
 ## 0. 前置决策（不做完就别写业务代码）
 
-- [ ] **spec 指标前缀条款**：设计钉的是 `ci_workflow_*`，[spec/metrics-format.md:12](../spec/metrics-format.md#L12) 要求业务指标 `<service>_`。`ci_workflow_` 是跨组件共享的领域前缀（三期事件路径入同一批指标），需在 spec 补「领域共享指标」条款，否则一落地即契约违规。
+- [x] **spec 指标前缀条款**（已落）：设计钉的是 `ci_workflow_*`，[spec/metrics-format.md:12](../spec/metrics-format.md#L12) 要求业务指标 `<service>_`。已在 spec 补「领域共享指标」条款与[已登记的领域前缀](../spec/metrics-format.md#已登记的领域前缀)表，`ci_workflow_` 登记在案；前提是**同一事实同名同 schema + 单点入账**（事件路径推给 aggregator 合并，不各自计数）。
 - [ ] **`community` 取值**：观测对象是 `vllm-project` / `triton-lang` / GitCode 组织，都不在 [spec/community-values.md](../spec/community-values.md) 枚举内。建议部署级 `OBS_COMMUNITY=common`、不做请求级覆盖，跨仓靠 `repo` 维度。
 - [ ] **GitCode Actions API 实测（阻塞适配器，最高优先级）**：集群内实测 `/api/v8/...` 全 404、`/api/v5/repos/{o}/{r}` 返回 401、`/api/v5/repos/{o}/{r}/issues` 200。设计文档里的 v8 与本地资料（v8 = 企业/角色/邀请）矛盾。要定清：真实 base path、哪些端点匿名可读、token header 形式、时间字段单位、限流返回头。
 - [ ] **生产 PAT 形态**：fine-grained，权限 `Actions:read` + `Contents:read` + `Metadata:read`，预算 2000–2250 次/小时（45%）。
