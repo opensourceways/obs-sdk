@@ -4,7 +4,7 @@
 > [CI workflow 可观测技术设计](CI%20workflow可观测技术设计.md)；本文只做**落地执行清单**，可逐条勾选。
 >
 > 状态图例：`[ ]` 待办 ｜ `[x]` 完成。
-> 跟踪方式：`project:ci-workflow-aggregator` label 与服务注册都还没做（见第 2 节），所以暂时以本文作为一期跟踪入口，
+> 跟踪方式：`project:ci-observability` label 与服务注册都还没做（见第 2 节），所以暂时以本文作为一期跟踪入口，
 > 待服务注册落地后再补 backlog 跟踪 issue。
 > **带 🔒 的是已实测锁定、不再讨论但要照着做的项。**
 
@@ -77,6 +77,7 @@
 ## 1. 工程骨架
 
 - [ ] 建仓 `opensourceways/ci-workflow-aggregator`：Go module（对齐 obs-sdk 的 go 版本）、`cmd/aggregator`、`internal/{config,source,state,scheduler,metrics}`、多阶段 Dockerfile（非 root）、CI。
+- [ ] 建 umbrella 仓 **`opensourceways/ci-observability`**（CI 可观测）：`.gitmodules` 挂 `ci-workflow-aggregator` 与 `jenkins-exporter` 两个子仓 + README（写清「本仓不含 obs-sdk，装的是 CI 侧采集器」）。**submodule 只能指向仓库根**，所以两个子仓必须各自独立成仓，不能把 exporter 塞进 `ci-all` 的子目录。
 - [ ] 依赖 `github.com/opensourceways/obs-sdk/go@go/v1.1.0`，不引第三方 prometheus 客户端。
 - [ ] chart：Deployment **单副本**、containerPort 8080 **命名 `http`**、Service 端口同名、`/healthz` 探针、PVC 1Gi `csi-disk` RWO + `strategy: Recreate`（单副本前提，滚动升级会撞 EVS 多挂）。
 - [ ] values 环境化：`repos[]`（platform / owner/name / community）、轮询间隔、token Secret 名、state 路径、日志级别、workflow 排除清单。
@@ -84,7 +85,13 @@
 
 ## 2. ai-workflow 接入
 
-- [ ] backlog 提 PR 加 `.ai-flow/services/ci-workflow-aggregator.yaml`：`service.label: project:ci-workflow-aggregator`、`implement.tools_repo`、`preview`（hk-003 + 独立 ns，**不需要 ingress**）、`release.deploy: argocd` + `argocd.cluster/namespace`。
+- [ ] backlog 提 PR 加 **`.ai-flow/services/ci-observability.yaml`**（**一个服务覆盖两个子仓**）：
+  - `service.id: ci-observability`、`service.label: project:ci-observability`、`implement.tools_repo: opensourceways/ci-observability`（子仓是它的 submodule，引擎按 changed submodule 决定构建谁）
+  - `preview`：hk-003 + 独立 ns `ci-observability`，**不需要 ingress**（两个组件都没有外部入口，只有 `/metrics`）
+  - `release.deploy: argocd`；镜像归档用 **`format: kustomize` + `image_names: {ci-workflow-aggregator: <镜像>, jenkins-exporter: <镜像>}`**，一个服务两个镜像靠这张表映射
+  - `argocd.pod_selector` 用**两个 Deployment 共打的** `app.kubernetes.io/part-of=ci-observability`——只匹配单个组件的话，另一个组件的镜像替换不会被校验，会「绿着但没部署」
+  - 两者同 ns、同 chart 目录（aggregator 多 PVC/单副本/Recreate，exporter 无状态），差异在 Deployment 层而不是服务层
+  - ⚠️ 引擎用的是 `git submodule update --init --recursive --remote`：**构建跟子仓分支头，不跟 umbrella 钉的 SHA**，umbrella 的 commit 不是发布快照，回滚按镜像 tag 走；子仓合入**不需要**回 umbrella 提指针 PR
 - [ ] 三环境凭据走 Vault → Secret（各自 path，**不进 git**）。
 - [ ] `argocd-application` 仓建 test 集群 Application：`project: <同集群>` + **`destination.name: in-cluster`**（写集群名会静默不同步）。
 - [ ] 建 issue（打 `project:` label）驱动 A/B/C 三段，别手工绕开流水线。
