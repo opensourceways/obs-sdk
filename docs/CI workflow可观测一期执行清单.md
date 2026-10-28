@@ -41,7 +41,16 @@
   | 限流 | 响应**不带任何 `x-ratelimit-*` 头**（只有 `trace-id`、`total_count`、`total_page`）→ 余量只能靠 429 计数或压测标定 |
 
   与设计文档的三处矛盾（待同步改设计，见回复）：job 是否嵌套、`FAILED(...)` 解析、`event` 取值映射。
-- [ ] **preview / test 是否可挂 PVC**：不可挂就让状态落 `emptyDir`、允许「重启不回填」（一期语义允许）。
+- [x] **preview / test 是否可挂 PVC**（2026-10-28 实测，结论：**都能挂，按 PVC 走**）：
+
+  | 集群 | 结论 | 依据 |
+  | --- | --- | --- |
+  | `infra-hk-test-cluster-001`（test） | ✅ 可挂 | `default` ns 已有 6 个 Bound PVC（`csi-disk-dss`，127d）；SA 有 `create persistentvolumeclaims`；**新建 1Gi `csi-disk` RWO，10–20s Bound**，验证后已删除 |
+  | `infra-hk-preview-cluster-003`（preview） | ✅ 可挂 | cluster-admin；SC 齐全（`csi-disk` / `csi-disk-topology` / `csi-disk-dss` / `csi-local*` / `csi-nas` / `csi-obs`）；**新建 1Gi `csi-disk` RWO，10–20s Bound**，验证后已删除 |
+
+  ⚠️ **两个集群都没有默认 StorageClass**（`storageclass.kubernetes.io/is-default-class` 为空）→ chart 必须**显式写 `storageClassName: csi-disk`**，漏写会永远 Pending（不是报错，是静默卡住）。`csi-disk` 是 `Immediate` 绑定；若节点跨可用区，改用 `csi-disk-topology`（`WaitForFirstConsumer`）更稳。
+
+  验证是在 `default` ns 做的：正式部署 ns 由 ai-workflow / ArgoCD 新建，可能叠加 ResourceQuota（当前 SA 无 cluster-scope 读权限，查不到）。上线时以首次 sync 的 PVC 状态为准，仍保留「PVC Pending 超过 5 分钟 → 降级 `emptyDir` + 重启不回填」的兜底开关。
 - [x] **失败口径单一实现**（已定）：在**归一后的 conclusion 枚举**上实现唯一一个函数，告警（L1/L2/L2′/L4）、连续失败、大盘共用；平台原值先映射、再判定，不在查询里各写各的。
 
   | 归类 | GitHub 原值 | GitCode 原值 |
