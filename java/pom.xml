@@ -15,11 +15,12 @@
   <properties>
     <maven.compiler.release>17</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <!-- 对齐 Spring Boot 3.2.x 的 micrometer 版本（Boot 3.2.9 dependencyManagement
-         锁定 micrometer 1.12.9）。micrometer 1.13 把 Prometheus registry 的包名从
-         io.micrometer.prometheus 改为 io.micrometer.prometheusmetrics，若按 1.13 编译，
-         接入 Boot 3.2.x 的服务会在运行期 NoClassDefFoundError。 -->
-    <micrometer.version>1.12.9</micrometer.version>
+    <!-- 1.12.9 受 CVE-2026-40984（micrometer-core HTTP server instrumentation DoS）影响，
+         升到 1.15.12 修复。该版本线把 Prometheus registry 的包名从 io.micrometer.prometheus
+         改为 io.micrometer.prometheusmetrics，为保持 SDK 对外的 io.micrometer.prometheus
+         包名不变（接入方零改动），registry 依赖改用官方过渡产物
+         micrometer-registry-prometheus-simpleclient（仍提供旧包名）。 -->
+    <micrometer.version>1.15.12</micrometer.version>
     <slf4j.version>2.0.13</slf4j.version>
     <logback.version>1.5.12</logback.version>
     <logstash-encoder.version>7.4</logstash-encoder.version>
@@ -36,7 +37,7 @@
     </dependency>
     <dependency>
       <groupId>io.micrometer</groupId>
-      <artifactId>micrometer-registry-prometheus</artifactId>
+      <artifactId>micrometer-registry-prometheus-simpleclient</artifactId>
       <version>${micrometer.version}</version>
     </dependency>
 
