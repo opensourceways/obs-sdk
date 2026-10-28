@@ -141,6 +141,7 @@
 - [ ] **dev**：1 个仓跑通 A/B/B+；验收判据是 **pod 内 `curl localhost:8080/metrics`**——hk-003 没有任何 Prometheus，别去找大盘。不建盘、不建告警。
 - [ ] **test**：3–5 仓 → 社区 agent 自动抓（端口名 `http`）→ 社区中心。判据用 `scrape_samples_scraped{cluster="infra-hk-test-cluster-001"} > 0`，**不要看 `up`**（空体 200 也 up=1）。
 - [ ] **prod 灰度**：先 3 仓 24h 看配额与错误率 → 全量 21 仓；同时核对 GitHub 设置页的实际调用量。
+- [ ] **jenkins-exporter 的额外硬约束（同一 umbrella，不同环境要求）**：它必须能访问 `openeulerjenkins.osinfra.cn`（[接入指南 §6.1.5](../docs/可观测接入指南.md)——**该域名在部分出口解析不到**）。所以三环境上线前先实测 DNS + HTTPS：解析不到 / 连不通的环境只能验收「进程起来 + `/metrics` 暴露 + 自监控三项」，**不能**验收真实采集，否则就是「上线即空跑」还绿着。若 preview / test 都不通，exporter 的联调只在 prod 做，B 段预览退化为镜像构建验证。
 
 ## 7. 监控接入（prod，独立 PR）
 

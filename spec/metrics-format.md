@@ -35,6 +35,7 @@ Prometheus 指标命名规则基础上追加组织约束：
 | 前缀 | 覆盖的事实 | 生产者 | 定义处 |
 | --- | --- | --- | --- |
 | `ci_workflow_` | CI workflow run / job 的结果、耗时、在途与采集自监控（`platform` 区分 GitHub / GitCode） | 一期 `ci-workflow-aggregator`（`source="poll"`）；三期 `ci-event-agent` 经 aggregator 入账（`source="event"`），**自身不暴露业务指标** | [CI workflow 可观测技术设计](../docs/CI%20workflow可观测技术设计.md) §2 |
+| `jenkins_` | Jenkins 门禁构建的结果、时长、连续失败、最近成功，以及节点/执行器与排队容量 | `jenkins-exporter`（自研，拉 Jenkins 只读 REST API；**不装 Prometheus 插件**，理由见接入指南 §6.1.1——插件只有 `job` 维度，回答不了多参数单 job 的「多少仓库受影响」） | [可观测接入指南 §6.1](../docs/可观测接入指南.md) |
 
 > 新增领域前缀时在本表加一行，并在设计文档里写清「同一事实」的边界与唯一记账方。
 
