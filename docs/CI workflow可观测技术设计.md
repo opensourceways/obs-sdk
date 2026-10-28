@@ -605,6 +605,8 @@ GitCode 的限流规则未公开，接入前要实测；适配器里要有独立
 
 Deployment 单副本，`/metrics:8080`；状态落 `/data/state.json`，PVC 1Gi `ReadWriteOnce` + `strategy: Recreate`（单副本前提下滚动升级不会出现两个 Pod 同时写）。不用 CronJob + Pushgateway：短生命周期进程的计数器每轮从 0 开始，`increase()` 只会看到重置。
 
+`OBS_SERVICE` / `OBS_ENV` / `OBS_COMMUNITY` 由 chart 显式注入，不靠兜底。其中 **`OBS_COMMUNITY` 固定 `common`**：观测对象是 `vllm-project`、`triton-lang` 与 GitCode 组织，都不在 [spec/community-values.md](../spec/community-values.md) 枚举内；本服务是平台维度的采集器而非某社区的实例，因此**不做请求级 community 覆盖**，跨仓区分一律走 `repo` label。
+
 状态文件写入用 tmp + fsync + rename 原子替换，每 30 秒或累积 200 条事件刷一次。
 
 ### 4.2 ghalistener
