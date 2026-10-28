@@ -25,8 +25,22 @@
 
 - [x] **spec 指标前缀条款**（已落）：设计钉的是 `ci_workflow_*`，[spec/metrics-format.md:12](../spec/metrics-format.md#L12) 要求业务指标 `<service>_`。已在 spec 补「领域共享指标」条款与[已登记的领域前缀](../spec/metrics-format.md#已登记的领域前缀)表，`ci_workflow_` 登记在案；前提是**同一事实同名同 schema + 单点入账**（事件路径推给 aggregator 合并，不各自计数）。
 - [x] **`community` 取值**（已定）：**固定 `OBS_COMMUNITY=common`**，不做请求级覆盖。观测对象是 `vllm-project` / `triton-lang` / GitCode 组织，都不在 [spec/community-values.md](../spec/community-values.md) 枚举内；跨仓区分走 `repo` label。
-- [ ] **GitCode Actions API 实测（阻塞适配器，最高优先级）**：集群内实测 `/api/v8/...` 全 404、`/api/v5/repos/{o}/{r}` 返回 401、`/api/v5/repos/{o}/{r}/issues` 200。设计文档里的 v8 与本地资料（v8 = 企业/角色/邀请）矛盾。要定清：真实 base path、哪些端点匿名可读、token header 形式、时间字段单位、限流返回头。
-- [ ] **生产 PAT 形态**：fine-grained，权限 `Actions:read` + `Contents:read` + `Metadata:read`，预算 2000–2250 次/小时（45%）。
+- [x] **生产 PAT 形态**（已定）：fine-grained，权限 `Actions:read` + `Contents:read` + `Metadata:read`，预算 2000–2250 次/小时（45%）。
+- [x] **GitCode Actions API 实测**（2026-10-28 匿名实测 `Ascend/pytorch`，结论如下）：
+
+  | 项 | 实测结论 |
+  | --- | --- |
+  | base path | **`https://api.gitcode.com/api/v8/repos/{owner}/{repo}/actions/*`**。`gitcode.com/api/v8/...`（无 `api.` 前缀）返回 `404 NOT_PATH`；`api.gitcode.com/api/v8/{不存在的路由}` 返回 text/plain `404 Route Not Found`，**可与业务 404 区分** |
+  | 匿名可读 | `actions/runs`、`actions/workflows`、`runs/{id}/jobs` **全部 200，无需 token**；不存在的仓返回 `{"error_code":404,"error_code_name":"UN_KNOW","error_message":"Project not found:..."}`。⚠️ v5 侧的「401」是**未匹配子路径的兜底**（`/repos/{o}/{r}/nonexistent-xyz` 也 401），**不能拿 401 判端点存在** |
+  | 分页/过滤 | 列表 `{total_count, workflow_runs[]}`；`per_page` **上限 100**（传 200 仍回 100）；按 `start_time` **严格倒序**；服务端过滤 `status` / `branch` / `workflow_id` / `page`；`since` **被忽略**（无时间过滤） |
+  | 状态取值 | run：`RUNNING` / `COMPLETED`（成功） / `FAILED` / `CANCELED`（job：`COMPLETED` / `FAILED` / `IGNORED`=跳过）。**没有 `QUEUED`**（在途只有 `RUNNING`），**也没观测到 `FAILED(...)` 括号原因** |
+  | 时间单位 | 全部**毫秒**：`start_time` / `end_time` / job 的 `apply_time` / `execute_cost_time`（如 38000 = 38s） |
+  | 关键字段 | run：`workflow_run_id`（32 位 hex 字符串）、`file_path`（`.gitcode/workflows/x.yml`，**作 workflow 身份**）、`event`（实测 `Note`=评论触发、`MR`）、`pull_request_id`、`head_branch`、`head_sha`、`run_number`、`attempt`（**仅详情有**）、`exist_in_default_branch` |
+  | job 结构 | `runs/{id}/jobs` 返回**扁平 `jobs[]`**（`total_count` 71 全量一次给），含 `apply_time`→`start_time` 可算排队；`resource` 是 **JSON 字符串**；`stages[]` 只出现在 360KB 的 run 详情里 |
+  | 详情接口 | `runs/{id}` 单次 **360KB 左右** → **不要轮询**，只在需要 `attempt` 等字段时取 |
+  | 限流 | 响应**不带任何 `x-ratelimit-*` 头**（只有 `trace-id`、`total_count`、`total_page`）→ 余量只能靠 429 计数或压测标定 |
+
+  与设计文档的三处矛盾（待同步改设计，见回复）：job 是否嵌套、`FAILED(...)` 解析、`event` 取值映射。
 - [ ] **preview / test 是否可挂 PVC**：不可挂就让状态落 `emptyDir`、允许「重启不回填」（一期语义允许）。
 - [ ] **失败口径单一实现**：`failure|timed_out|startup_failure` 计失败；`action_required` 不进分母。告警、连续失败、大盘共用同一函数。
 - [ ] **workflow 排除清单初版**（标签/评论机器人、scorecard/trivy、发布构建类），随配置下发不写死。
