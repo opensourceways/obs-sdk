@@ -88,9 +88,11 @@
 - [ ] backlog 提 PR 加 **`.ai-flow/services/ci-observability.yaml`**（**一个服务覆盖两个子仓**）：
   - `service.id: ci-observability`、`service.label: project:ci-observability`、`implement.tools_repo: opensourceways/ci-observability`（子仓是它的 submodule，引擎按 changed submodule 决定构建谁）
   - `preview`：hk-003 + 独立 ns `ci-observability`，**不需要 ingress**（两个组件都没有外部入口，只有 `/metrics`）
-  - `release.deploy: argocd`；镜像归档用 **`format: kustomize` + `image_names: {ci-workflow-aggregator: <镜像>, jenkins-exporter: <镜像>}`**，一个服务两个镜像靠这张表映射
+  - `release.deploy: argocd`；**两个子仓各一个部署子目录 / 各一个 ArgoCD Application**（`ci-observability/aggregator/`、`ci-observability/exporter/`），`format: kustomize` + 逐行 `image_names` 把子仓名映射到各自 `images[].name`。引擎的 kustomize 归档本来就是**按 sub 各自找 kustomization**（apply_tag_sync.py 注释明说「每个 sub 可能有独立的 kustomization.yaml 在不同子目录下」），塞进同一份 kustomization 是没被人走过的那条路
   - `argocd.pod_selector` 用**两个 Deployment 共打的** `app.kubernetes.io/part-of=ci-observability`——只匹配单个组件的话，另一个组件的镜像替换不会被校验，会「绿着但没部署」
-  - 两者同 ns、同 chart 目录（aggregator 多 PVC/单副本/Recreate，exporter 无状态），差异在 Deployment 层而不是服务层
+  - 同一 ns `ci-observability`，但 Deployment 分开：aggregator 单副本 + PVC + `strategy: Recreate`，exporter 无状态可多副本
+  - **infra-common/service.md 每个子仓每环境各留一行**（镜像名 / 归档子路径 / 镜像版本路径 / 归档方式）：镜像路径与归档目标是这张表的「单一事实来源」，缺行 ⇒ 该子仓**不构建也不归档，且不报错**
+  - **每个子仓根目录必须有 Dockerfile**：构建循环是 `[ -f "$smpath/Dockerfile" ] || continue`，没有就静默跳过；镜像仓名取**子仓名小写**
   - ⚠️ 引擎用的是 `git submodule update --init --recursive --remote`：**构建跟子仓分支头，不跟 umbrella 钉的 SHA**，umbrella 的 commit 不是发布快照，回滚按镜像 tag 走；子仓合入**不需要**回 umbrella 提指针 PR
 - [ ] 三环境凭据走 Vault → Secret（各自 path，**不进 git**）。
 - [ ] `argocd-application` 仓建 test 集群 Application：`project: <同集群>` + **`destination.name: in-cluster`**（写集群名会静默不同步）。
