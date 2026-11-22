@@ -34,7 +34,7 @@ h2 { font-size: 17px; margin: 0 0 14px; display: flex; align-items: center; gap:
 .stage-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 .stage-total { margin-left: auto; font-size: 12px; font-weight: 500; color: var(--muted); }
 .chart-row { display: flex; align-items: center; gap: 36px; flex-wrap: wrap; }
-.chart { flex: 0 0 360px; max-width: 100%; }
+.chart { flex: 0 0 600px; max-width: 100%; }
 .chart svg { width: 100%; height: auto; display: block; }
 .legend { flex: 1 1 300px; min-width: 260px; }
 .legend-item { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px dashed var(--line); }
@@ -88,15 +88,20 @@ footer a { color: var(--accent); }
     <h2>各阶段故障数</h2>
     <div class="chart-row">
       <div class="chart">
-        <svg viewBox="0 0 400 400" role="img" aria-label="各阶段故障数饼图">
-          <path d="M 200 200 L 200.00 50.00 A 150 150 0 0 1 303.28 308.78 Z" fill="#4C78A8" stroke="#fff" stroke-width="2"><title>依赖下载+编译：69 条（37.9%）</title></path>
-<path d="M 200 200 L 303.28 308.78 A 150 150 0 0 1 51.09 181.92 Z" fill="#F58518" stroke="#fff" stroke-width="2"><title>资源分配/容器拉起：71 条（39.0%）</title></path>
-<path d="M 200 200 L 51.09 181.92 A 150 150 0 0 1 93.02 94.85 Z" fill="#54A24B" stroke="#fff" stroke-width="2"><title>用例运行：19 条（10.4%）</title></path>
-<path d="M 200 200 L 93.02 94.85 A 150 150 0 0 1 149.24 58.85 Z" fill="#B279A2" stroke="#fff" stroke-width="2"><title>权重加载：13 条（7.1%）</title></path>
-<path d="M 200 200 L 149.24 58.85 A 150 150 0 0 1 200.00 50.00 Z" fill="#E45756" stroke="#fff" stroke-width="2"><title>日志/结果上传：10 条（5.5%）</title></path>
-          <circle cx="200" cy="200" r="72" fill="#fff"></circle>
-          <text x="200" y="196" text-anchor="middle" font-size="34" font-weight="700" fill="#1f2328">182</text>
-          <text x="200" y="222" text-anchor="middle" font-size="13" fill="#646d78">平台故障</text>
+        <svg viewBox="0 0 600 400" role="img" aria-label="各阶段故障数饼图">
+          <path d="M 300 200 L 300.00 50.00 A 150 150 0 0 1 403.28 308.78 Z" fill="#4C78A8" stroke="#fff" stroke-width="2"><title>依赖下载+编译：69 条（37.9%）</title></path>
+<path d="M 300 200 L 403.28 308.78 A 150 150 0 0 1 151.09 181.92 Z" fill="#F58518" stroke="#fff" stroke-width="2"><title>资源分配/容器拉起：71 条（39.0%）</title></path>
+<path d="M 300 200 L 151.09 181.92 A 150 150 0 0 1 193.02 94.85 Z" fill="#54A24B" stroke="#fff" stroke-width="2"><title>用例运行：19 条（10.4%）</title></path>
+<path d="M 300 200 L 193.02 94.85 A 150 150 0 0 1 249.24 58.85 Z" fill="#B279A2" stroke="#fff" stroke-width="2"><title>权重加载：13 条（7.1%）</title></path>
+<path d="M 300 200 L 249.24 58.85 A 150 150 0 0 1 300.00 50.00 Z" fill="#E45756" stroke="#fff" stroke-width="2"><title>日志/结果上传：10 条（5.5%）</title></path>
+          <polyline points="441.2,143.7 456,143.7 464,143.7" fill="none" stroke="#9aa4b2" stroke-width="1.2"/><circle cx="441.2" cy="143.7" r="2.5" fill="#4C78A8"/><text x="470" y="143.7" text-anchor="start" font-size="12" font-weight="600" fill="#1f2328">依赖下载+编译</text><text x="470" y="158.7" text-anchor="start" font-size="11" fill="#646d78">69 条 · 37.9%</text>
+<polyline points="231.7,335.8 144,335.8 136,335.8" fill="none" stroke="#9aa4b2" stroke-width="1.2"/><circle cx="231.7" cy="335.8" r="2.5" fill="#F58518"/><text x="130" y="335.8" text-anchor="end" font-size="12" font-weight="600" fill="#1f2328">资源分配/容器拉起</text><text x="130" y="350.8" text-anchor="end" font-size="11" fill="#646d78">71 条 · 39.0%</text>
+<polyline points="163.1,134.0 144,134.3 136,134.3" fill="none" stroke="#9aa4b2" stroke-width="1.2"/><circle cx="163.1" cy="134.0" r="2.5" fill="#54A24B"/><text x="130" y="134.3" text-anchor="end" font-size="12" font-weight="600" fill="#1f2328">用例运行</text><text x="130" y="149.3" text-anchor="end" font-size="11" fill="#646d78">19 条 · 10.4%</text>
+<polyline points="218.0,72.0 144,92.3 136,92.3" fill="none" stroke="#9aa4b2" stroke-width="1.2"/><circle cx="218.0" cy="72.0" r="2.5" fill="#B279A2"/><text x="130" y="92.3" text-anchor="end" font-size="12" font-weight="600" fill="#1f2328">权重加载</text><text x="130" y="107.3" text-anchor="end" font-size="11" fill="#646d78">13 条 · 7.1%</text>
+<polyline points="273.9,50.3 144,50.3 136,50.3" fill="none" stroke="#9aa4b2" stroke-width="1.2"/><circle cx="273.9" cy="50.3" r="2.5" fill="#E45756"/><text x="130" y="50.3" text-anchor="end" font-size="12" font-weight="600" fill="#1f2328">日志/结果上传</text><text x="130" y="65.3" text-anchor="end" font-size="11" fill="#646d78">10 条 · 5.5%</text>
+          <circle cx="300" cy="200" r="74" fill="#fff"></circle>
+          <text x="300" y="196" text-anchor="middle" font-size="34" font-weight="700" fill="#1f2328">182</text>
+          <text x="300" y="222" text-anchor="middle" font-size="13" fill="#646d78">平台故障</text>
         </svg>
       </div>
       <div class="legend">
@@ -107,7 +112,7 @@ footer a { color: var(--accent); }
 <div class="legend-item"><span class="dot" style="background:#E45756"></span><span class="legend-name">日志/结果上传</span><span class="legend-val">10 <em>(5.5%)</em></span></div>
       </div>
     </div>
-    <div class="note">饼图按阶段；占比以 182 为分母。鼠标悬停可查看具体数值。</div>
+    <div class="note">饼图外圈标注各阶段名称、条数与占比；占比以 182 为分母。鼠标悬停可查看提示。</div>
   </section>
 
   <section class="card">
