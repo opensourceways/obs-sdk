@@ -39,7 +39,7 @@ h2 { font-size: 17px; margin: 0 0 14px; display: flex; align-items: center; gap:
 .legend { flex: 1 1 300px; min-width: 260px; }
 .legend-item { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px dashed var(--line); }
 .legend-item:last-child { border-bottom: 0; }
-.dot { width: 12px; height: 12px; border-radius: 3px; display: inline-block; flex: 0 0 auto; }
+.dot { width: 12px; height: 12px; border-radius: 3px; display: inline-block; flex: 0 0 auto; vertical-align: -1px; margin-right: 6px; }
 .legend-name { flex: 1; font-size: 14px; }
 .legend-val { font-variant-numeric: tabular-nums; font-weight: 600; }
 .legend-val em { color: var(--muted); font-style: normal; font-weight: 400; }
@@ -88,7 +88,7 @@ footer a { color: var(--accent); }
     <h2>各阶段故障数</h2>
     <div class="chart-row">
       <div class="chart">
-        <svg viewBox="0 0 600 400" role="img" aria-label="各阶段故障数饼图">
+        <svg viewBox="0 0 600 400" role="img" aria-label="故障分布饼图">
           <path d="M 300 200 L 300.00 50.00 A 150 150 0 0 1 403.28 308.78 Z" fill="#4C78A8" stroke="#fff" stroke-width="2"><title>依赖下载+编译：69 条（37.9%）</title></path>
 <path d="M 300 200 L 403.28 308.78 A 150 150 0 0 1 151.09 181.92 Z" fill="#F58518" stroke="#fff" stroke-width="2"><title>资源分配/容器拉起：71 条（39.0%）</title></path>
 <path d="M 300 200 L 151.09 181.92 A 150 150 0 0 1 193.02 94.85 Z" fill="#54A24B" stroke="#fff" stroke-width="2"><title>用例运行：19 条（10.4%）</title></path>
@@ -275,8 +275,43 @@ footer a { color: var(--accent); }
     </section>
   </div>
 
+  <section class="card">
+    <h2>社区服务故障分布 <span class="stage-total">26 条 · 独立口径</span></h2>
+    <div class="chart-row">
+      <div class="chart">
+        <svg viewBox="0 0 600 400" role="img" aria-label="故障分布饼图">
+          <path d="M 300 200 L 300.00 50.00 A 150 150 0 0 1 335.90 54.36 Z" fill="#4C78A8" stroke="#fff" stroke-width="2"><title>官网：1 条（3.8%）</title></path>
+<path d="M 300 200 L 335.90 54.36 A 150 150 0 0 1 448.91 218.08 Z" fill="#F58518" stroke="#fff" stroke-width="2"><title>账号：6 条（23.1%）</title></path>
+<path d="M 300 200 L 448.91 218.08 A 150 150 0 0 1 399.47 312.28 Z" fill="#54A24B" stroke="#fff" stroke-width="2"><title>CLA：3 条（11.5%）</title></path>
+<path d="M 300 200 L 399.47 312.28 A 150 150 0 1 1 300.00 50.00 Z" fill="#E45756" stroke="#fff" stroke-width="2"><title>机器人：16 条（61.5%）</title></path>
+          <polyline points="318.3,49.1 456,49.1 464,49.1" fill="none" stroke="#9aa4b2" stroke-width="1.2"/><circle cx="318.3" cy="49.1" r="2.5" fill="#4C78A8"/><text x="470" y="49.1" text-anchor="start" font-size="12" font-weight="600" fill="#1f2328">官网</text><text x="470" y="64.1" text-anchor="start" font-size="11" fill="#646d78">1 条 · 3.8%</text>
+<polyline points="425.1,113.7 456,113.7 464,113.7" fill="none" stroke="#9aa4b2" stroke-width="1.2"/><circle cx="425.1" cy="113.7" r="2.5" fill="#F58518"/><text x="470" y="113.7" text-anchor="start" font-size="12" font-weight="600" fill="#1f2328">账号</text><text x="470" y="128.7" text-anchor="start" font-size="11" fill="#646d78">6 条 · 23.1%</text>
+<polyline points="434.6,270.6 456,270.6 464,270.6" fill="none" stroke="#9aa4b2" stroke-width="1.2"/><circle cx="434.6" cy="270.6" r="2.5" fill="#54A24B"/><text x="470" y="270.6" text-anchor="start" font-size="12" font-weight="600" fill="#1f2328">CLA</text><text x="470" y="285.6" text-anchor="start" font-size="11" fill="#646d78">3 条 · 11.5%</text>
+<polyline points="157.9,253.9 144,253.9 136,253.9" fill="none" stroke="#9aa4b2" stroke-width="1.2"/><circle cx="157.9" cy="253.9" r="2.5" fill="#E45756"/><text x="130" y="253.9" text-anchor="end" font-size="12" font-weight="600" fill="#1f2328">机器人</text><text x="130" y="268.9" text-anchor="end" font-size="11" fill="#646d78">16 条 · 61.5%</text>
+          <circle cx="300" cy="200" r="74" fill="#fff"></circle>
+          <text x="300" y="196" text-anchor="middle" font-size="34" font-weight="700" fill="#1f2328">26</text>
+          <text x="300" y="222" text-anchor="middle" font-size="13" fill="#646d78">社区服务</text>
+        </svg>
+      </div>
+      <div class="legend">
+        <table class="mini">
+          <thead><tr><th>服务</th><th class="num">故障数</th><th class="num">占比</th><th class="barhead">比例</th></tr></thead>
+          <tbody>
+<tr><td><span class="dot" style="background:#4C78A8"></span>官网</td><td class="num">1</td><td class="num">3.8%</td><td class="barcell"><div class="bar"><span style="width:6.2%;background:#4C78A8"></span></div></td></tr>
+<tr><td><span class="dot" style="background:#F58518"></span>账号</td><td class="num">6</td><td class="num">23.1%</td><td class="barcell"><div class="bar"><span style="width:37.5%;background:#F58518"></span></div></td></tr>
+<tr><td><span class="dot" style="background:#54A24B"></span>CLA</td><td class="num">3</td><td class="num">11.5%</td><td class="barcell"><div class="bar"><span style="width:18.8%;background:#54A24B"></span></div></td></tr>
+<tr><td><span class="dot" style="background:#B279A2"></span>CVE</td><td class="num">0</td><td class="num">0.0%</td><td class="barcell"><div class="bar"></div></td></tr>
+<tr><td><span class="dot" style="background:#E45756"></span>机器人</td><td class="num">16</td><td class="num">61.5%</td><td class="barcell"><div class="bar"><span style="width:100.0%;background:#E45756"></span></div></td></tr>
+<tr class="total"><td>合计</td><td class="num">26</td><td class="num">100%</td><td></td></tr>
+          </tbody>
+        </table>
+        <div class="note">社区服务口径与上面的 CI 平台 182 条<b>独立</b>，不合并计算；CVE 为 0 次，仅在图例/表格中展示。</div>
+      </div>
+    </div>
+  </section>
+
   <footer>
-    <div><strong>口径</strong>：182 = 215（全部问题）− 27（业务侧）− 3（治理/观测需求）− 3（未定位）。</div>
+    <div><strong>口径</strong>：182 = 215（全部问题）− 27（业务侧）− 3（治理/观测需求）− 3（未定位）；社区服务另计 26 条。</div>
     <div><strong>方法</strong>：单标签主因 + 阶段感知的关键词匹配；每条记录只归一个 L2，因此各表可加总到 182。</div>
     <div><strong>注意</strong>：规则提取的预览版，不是人工标注的最终数据；组件级排名对规则敏感，链路级排序更稳。</div>
     <div>配套文档：<a href="ascend-ci-问题统计-L2分布-20260822-1122.md">L2 分布 Markdown</a> · 原始问题统计：<code>ascend-ci-问题统计-20260822-1122.html</code>（本地）</div>
