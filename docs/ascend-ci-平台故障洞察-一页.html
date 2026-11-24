@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>昇腾 CI 平台故障洞察：从频发到可控</title>
+<style>
+:root { --bg:#F5F6F8; --card:#fff; --ink:#1F2328; --muted:#646D78; --line:#E3E6EA; --head:#1F3A5F; }
+* { box-sizing: border-box; }
+body { margin:0; padding:28px 18px 44px; background:var(--bg); color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; line-height:1.55; }
+.wrap { max-width:1180px; margin:0 auto; }
+h1 { font-size:26px; margin:0 0 4px; }
+.sub { color:var(--muted); font-size:13px; }
+.badge { display:inline-block; margin-top:8px; padding:3px 10px; border-radius:999px;
+  background:#EAF1F8; color:var(--head); font-size:12px; font-weight:600; }
+.grid2 { display:grid; grid-template-columns: 430px 1fr; gap:16px; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px 20px; margin:14px 0; }
+h2 { font-size:16px; margin:0 0 12px; color:var(--head); }
+h3 { font-size:13px; margin:14px 0 8px; color:var(--head); }
+.pie { width:100%; max-width:360px; display:block; margin:0 auto; }
+.legend { margin-top:8px; }
+.legend-item { display:flex; align-items:center; gap:8px; padding:4px 0; border-bottom:1px dashed var(--line); font-size:12px; }
+.legend-item:last-child { border-bottom:0; }
+.dot { display:inline-block; width:9px; height:9px; border-radius:2px; flex:0 0 auto; margin-right:4px; }
+.legend-name { flex:1; }
+.legend-val { font-variant-numeric:tabular-nums; font-weight:600; }
+.legend-val em { color:var(--muted); font-style:normal; font-weight:400; }
+.tbl { width:100%; border-collapse:collapse; font-size:12px; }
+.tbl th { background:var(--head); color:#fff; font-weight:600; font-size:11px; padding:6px 7px; text-align:left; }
+.tbl td { padding:5px 7px; border-bottom:1px solid var(--line); vertical-align:middle; }
+.tbl tr.total td { font-weight:700; background:#EAF1F8; border-bottom:0; }
+.tbl .num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.tbl .center { text-align:center; }
+.tbl .stage-cell { background:#EAF1F8; font-weight:700; text-align:center; vertical-align:middle; }
+.root-tbl .orig { color:#3A4149; line-height:1.5; }
+.layer { display:grid; grid-template-columns: 190px 1fr 430px; gap:12px; align-items:center; margin:10px 0; }
+.problem { background:#FDE8E8; border:1px solid #F5C2C2; color:#9B1C1C; border-radius:10px; padding:9px 12px; }
+.problem b { display:block; font-size:12.5px; }
+.problem small { font-size:10.5px; }
+.route { background:#EAF1F8; border:1px solid #D0DCEA; border-radius:10px; padding:7px 10px; }
+.route-title { font-weight:700; color:var(--head); font-size:11.5px; margin-bottom:5px; }
+.chips { display:flex; flex-wrap:wrap; gap:5px; }
+.chip { background:#fff; border:1px solid #C9D6E5; border-radius:6px; padding:2px 7px; font-size:10.5px; color:var(--head); }
+.effect { background:#E8F5E9; border:1px solid #C8E6C9; border-radius:10px; padding:8px 10px; color:#1B5E20; }
+.effect-title { font-weight:700; font-size:11px; margin-bottom:5px; }
+.vis-row { display:flex; align-items:center; gap:10px; }
+.vis-cell { display:flex; flex-direction:column; gap:3px; align-items:center; }
+.vis-label { font-size:9.5px; color:#1B5E20; }
+.arrow { color:#9AA4B2; font-size:14px; }
+.cal { display:grid; grid-template-columns:repeat(7,9px); gap:2px; }
+.cal .c { width:9px; height:9px; background:#E6E6E6; border-radius:2px; display:block; }
+.cal .c.red { background:#E45756; }
+.dots { display:grid; grid-template-columns:repeat(6,8px); gap:3px; }
+.dots .d { width:6px; height:6px; background:#CFCFCF; border-radius:50%; display:block; }
+.dots .d.red { background:#E45756; }
+.tl { width:120px; height:10px; background:#D9D9D9; border-radius:5px; overflow:hidden; display:flex; }
+.tl span { height:100%; display:block; }
+.note { color:var(--muted); font-size:11px; margin-top:8px; }
+footer { color:var(--muted); font-size:11.5px; margin-top:18px; line-height:1.8; }
+@media (max-width:980px) {
+  .grid2 { grid-template-columns:1fr; }
+  .layer { grid-template-columns:1fr; }
+  .effect { margin-top:6px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>昇腾 CI 平台故障洞察：从频发到可控</h1>
+  <div class="sub">182 条平台故障 · 8 类根因 · 2026-08-22 ~ 2026-11-22 · 已剔除非故障/未定位 11</div>
+  <div class="badge">数据源：193 条根因聚合（不含业务侧 22）</div>
+
+  <div class="grid2">
+    <section class="card">
+      <h2>昇腾CI仅3个月故障汇总（按阶段）</h2>
+      <svg viewBox="0 0 380 380" class="pie" role="img" aria-label="按阶段故障分布">
+<path d="M 190 190 L 190.00 35.00 A 155 155 0 0 1 320.53 106.41 Z" fill="#2F5D8A" stroke="#fff" stroke-width="2"><title>调度与弹性扩容：29 条（15.9%）</title></path>
+<path d="M 190 190 L 320.53 106.41 A 155 155 0 0 1 334.93 244.96 Z" fill="#C0504D" stroke="#fff" stroke-width="2"><title>依赖安装与缓存：27 条（14.8%）</title></path>
+<path d="M 190 190 L 334.93 244.96 A 155 155 0 0 1 262.03 327.25 Z" fill="#9BBB59" stroke="#fff" stroke-width="2"><title>测试镜像拉取：21 条（11.5%）</title></path>
+<path d="M 190 190 L 262.03 327.25 A 155 155 0 0 1 158.12 341.69 Z" fill="#F79646" stroke="#fff" stroke-width="2"><title>Runner 初始化/执行：20 条（11.0%）</title></path>
+<path d="M 190 190 L 158.12 341.69 A 155 155 0 0 1 72.22 290.77 Z" fill="#8064A2" stroke="#fff" stroke-width="2"><title>代码检出：19 条（10.4%）</title></path>
+<path d="M 190 190 L 72.22 290.77 A 155 155 0 0 1 35.58 203.36 Z" fill="#4BACC6" stroke="#fff" stroke-width="2"><title>用例执行：18 条（9.9%）</title></path>
+<path d="M 190 190 L 35.58 203.36 A 155 155 0 0 1 43.26 140.07 Z" fill="#BF9000" stroke="#fff" stroke-width="2"><title>镜像构建/分发：12 条（6.6%）</title></path>
+<path d="M 190 190 L 43.26 140.07 A 155 155 0 0 1 72.22 89.23 Z" fill="#4F81BD" stroke="#fff" stroke-width="2"><title>任务触发/排队：11 条（6.0%）</title></path>
+<path d="M 190 190 L 72.22 89.23 A 155 155 0 0 1 117.97 52.75 Z" fill="#E36C09" stroke="#fff" stroke-width="2"><title>权重/模型加载：11 条（6.0%）</title></path>
+<path d="M 190 190 L 117.97 52.75 A 155 155 0 0 1 163.38 37.30 Z" fill="#70AD47" stroke="#fff" stroke-width="2"><title>结果上传/收尾：9 条（4.9%）</title></path>
+<path d="M 190 190 L 163.38 37.30 A 155 155 0 0 1 190.00 35.00 Z" fill="#7F7F7F" stroke="#fff" stroke-width="2"><title>Runner/集群交互：5 条（2.7%）</title></path>
+<circle cx="190" cy="190" r="78" fill="#fff"></circle>
+<text x="190" y="186" text-anchor="middle" font-size="32" font-weight="700" fill="#1F2328">182</text>
+<text x="190" y="210" text-anchor="middle" font-size="12" fill="#646D78">平台故障</text>
+</svg>
+      <div class="legend"><div class="legend-item"><span class="dot" style="background:#2F5D8A"></span><span class="legend-name">调度与弹性扩容</span><span class="legend-val">29 <em>(15.9%)</em></span></div>
+<div class="legend-item"><span class="dot" style="background:#C0504D"></span><span class="legend-name">依赖安装与缓存</span><span class="legend-val">27 <em>(14.8%)</em></span></div>
+<div class="legend-item"><span class="dot" style="background:#9BBB59"></span><span class="legend-name">测试镜像拉取</span><span class="legend-val">21 <em>(11.5%)</em></span></div>
+<div class="legend-item"><span class="dot" style="background:#F79646"></span><span class="legend-name">Runner 初始化/执行</span><span class="legend-val">20 <em>(11.0%)</em></span></div>
+<div class="legend-item"><span class="dot" style="background:#8064A2"></span><span class="legend-name">代码检出</span><span class="legend-val">19 <em>(10.4%)</em></span></div>
+<div class="legend-item"><span class="dot" style="background:#4BACC6"></span><span class="legend-name">用例执行</span><span class="legend-val">18 <em>(9.9%)</em></span></div>
+<div class="legend-item"><span class="dot" style="background:#BF9000"></span><span class="legend-name">镜像构建/分发</span><span class="legend-val">12 <em>(6.6%)</em></span></div>
+<div class="legend-item"><span class="dot" style="background:#4F81BD"></span><span class="legend-name">任务触发/排队</span><span class="legend-val">11 <em>(6.0%)</em></span></div>
+<div class="legend-item"><span class="dot" style="background:#E36C09"></span><span class="legend-name">权重/模型加载</span><span class="legend-val">11 <em>(6.0%)</em></span></div>
+<div class="legend-item"><span class="dot" style="background:#70AD47"></span><span class="legend-name">结果上传/收尾</span><span class="legend-val">9 <em>(4.9%)</em></span></div>
+<div class="legend-item"><span class="dot" style="background:#7F7F7F"></span><span class="legend-name">Runner/集群交互</span><span class="legend-val">5 <em>(2.7%)</em></span></div></div>
+      <div class="note">HTML 版用图例替代 11 个扇形标签，避免小扇形文字重叠；PPT 版仍保留“阶段名 + 数量”9pt 标签。</div>
+    </section>
+
+    <section class="card">
+      <h2>阶段 × 根因</h2>
+      <table class="tbl stage-tbl"><thead><tr><th>阶段</th><th>根因</th><th class="num">数量</th></tr></thead><tbody>
+<tr>
+<td rowspan="2" class="stage-cell">调度与弹性扩容</td>
+<td><span class="dot" style="background:#9BBB59"></span>节点与调度</td><td class="num">21</td></tr>
+<tr>
+<td><span class="dot" style="background:#F79646"></span>容量与排队</td><td class="num">8</td></tr>
+<tr>
+<td rowspan="3" class="stage-cell">依赖安装与缓存</td>
+<td><span class="dot" style="background:#8064A2"></span>内部服务与缓存</td><td class="num">11</td></tr>
+<tr>
+<td><span class="dot" style="background:#2F5D8A"></span>网络与上游</td><td class="num">11</td></tr>
+<tr>
+<td><span class="dot" style="background:#4BACC6"></span>存储与模型缓存</td><td class="num">5</td></tr>
+<tr>
+<td rowspan="3" class="stage-cell">测试镜像拉取</td>
+<td><span class="dot" style="background:#2F5D8A"></span>网络与上游</td><td class="num">15</td></tr>
+<tr>
+<td><span class="dot" style="background:#BF9000"></span>镜像与构建</td><td class="num">3</td></tr>
+<tr>
+<td><span class="dot" style="background:#C0504D"></span>运行时与组件</td><td class="num">3</td></tr>
+<tr>
+<td rowspan="1" class="stage-cell">Runner 初始化/执行</td>
+<td><span class="dot" style="background:#C0504D"></span>运行时与组件</td><td class="num">20</td></tr>
+<tr>
+<td rowspan="2" class="stage-cell">代码检出</td>
+<td><span class="dot" style="background:#2F5D8A"></span>网络与上游</td><td class="num">11</td></tr>
+<tr>
+<td><span class="dot" style="background:#8064A2"></span>内部服务与缓存</td><td class="num">8</td></tr>
+<tr>
+<td rowspan="3" class="stage-cell">用例执行</td>
+<td><span class="dot" style="background:#4F81BD"></span>NPU/驱动/算子</td><td class="num">11</td></tr>
+<tr>
+<td><span class="dot" style="background:#F79646"></span>容量与排队</td><td class="num">6</td></tr>
+<tr>
+<td><span class="dot" style="background:#C0504D"></span>运行时与组件</td><td class="num">1</td></tr>
+<tr>
+<td rowspan="3" class="stage-cell">镜像构建/分发</td>
+<td><span class="dot" style="background:#BF9000"></span>镜像与构建</td><td class="num">8</td></tr>
+<tr>
+<td><span class="dot" style="background:#F79646"></span>容量与排队</td><td class="num">2</td></tr>
+<tr>
+<td><span class="dot" style="background:#2F5D8A"></span>网络与上游</td><td class="num">2</td></tr>
+<tr>
+<td rowspan="1" class="stage-cell">任务触发/排队</td>
+<td><span class="dot" style="background:#F79646"></span>容量与排队</td><td class="num">11</td></tr>
+<tr>
+<td rowspan="1" class="stage-cell">权重/模型加载</td>
+<td><span class="dot" style="background:#4BACC6"></span>存储与模型缓存</td><td class="num">11</td></tr>
+<tr>
+<td rowspan="2" class="stage-cell">结果上传/收尾</td>
+<td><span class="dot" style="background:#2F5D8A"></span>网络与上游</td><td class="num">4</td></tr>
+<tr>
+<td><span class="dot" style="background:#C0504D"></span>运行时与组件</td><td class="num">5</td></tr>
+<tr>
+<td rowspan="1" class="stage-cell">Runner/集群交互</td>
+<td><span class="dot" style="background:#2F5D8A"></span>网络与上游</td><td class="num">5</td></tr>
+<tr class="total"><td colspan="2">合计</td><td class="num">182</td></tr>
+</tbody></table>
+      <div class="note">PPT 中同一阶段的多个根因纵向合并了“阶段”单元格；HTML 用 rowspan 表达同样的合并。</div>
+    </section>
+  </div>
+
+  <section class="card">
+    <h2>8 类根因（含原始根因平铺）</h2>
+    <table class="tbl root-tbl"><thead><tr><th>根因</th><th>原始根因（平铺）</th><th class="num">数量</th><th class="num">占比</th><th>可发现</th><th>MTTR</th></tr></thead><tbody>
+<tr><td><span class="dot" style="background:#2F5D8A"></span>网络与上游</td><td class="orig">拉取慢/超时、codeload、出口、API/exec、上传、外部源站、gitcode/diff、构建网络</td><td class="num">48</td><td class="num">26.4%</td><td class="center">半</td><td class="center">中</td></tr>
+<tr><td><span class="dot" style="background:#C0504D"></span>运行时与组件</td><td class="orig">hooks、K8s、postStart、证书、资源回收、Post hooks、环境</td><td class="num">29</td><td class="num">15.9%</td><td class="center">否</td><td class="center">长</td></tr>
+<tr><td><span class="dot" style="background:#F79646"></span>容量与排队</td><td class="orig">任务接单、资源不足、容器资源、构建资源、排队不可观测</td><td class="num">27</td><td class="num">14.8%</td><td class="center">半</td><td class="center">长</td></tr>
+<tr><td><span class="dot" style="background:#9BBB59"></span>节点与调度</td><td class="orig">节点被占、误驱逐、调度配置</td><td class="num">21</td><td class="num">11.5%</td><td class="center">否</td><td class="center">长</td></tr>
+<tr><td><span class="dot" style="background:#8064A2"></span>内部服务与缓存</td><td class="orig">内部缓存、git-cdn</td><td class="num">19</td><td class="num">10.4%</td><td class="center">半</td><td class="center">中</td></tr>
+<tr><td><span class="dot" style="background:#4BACC6"></span>存储与模型缓存</td><td class="orig">存储锁、缓存缺失、缓存损坏、挂载</td><td class="num">16</td><td class="num">8.8%</td><td class="center">否</td><td class="center">长</td></tr>
+<tr><td><span class="dot" style="background:#BF9000"></span>镜像与构建</td><td class="orig">buildkit、镜像缺失、构建编排</td><td class="num">11</td><td class="num">6.0%</td><td class="center">半</td><td class="center">中</td></tr>
+<tr><td><span class="dot" style="background:#4F81BD"></span>NPU/驱动/算子</td><td class="orig">NPU</td><td class="num">11</td><td class="num">6.0%</td><td class="center">半</td><td class="center">长</td></tr>
+<tr class="total"><td colspan="2">合计（33 个原始根因）</td><td class="num">182</td><td class="num">100%</td><td>—</td><td>—</td></tr>
+</tbody></table>
+    <div class="note">“原始根因（平铺）”把 8 个聚合类展开成 33 个原始根因；发现 = 半 / 否，MTTR = 长 / 中 / 短（当前能力评估）。</div>
+  </section>
+
+  <section class="card">
+    <h2>从现状到目标：三层递进</h2>
+    <div class="layer">
+      <div class="problem"><b>① 故障频发</b><small>同类反复发生</small></div>
+      <div class="route">
+        <div class="route-title">问题管理</div>
+        <div class="chips"><span class="chip">problem record</span><span class="chip">error budget</span><span class="chip">postmortem</span><span class="chip">action items</span><span class="chip">复发率</span></div>
+      </div>
+      <div class="effect">
+        <div class="effect-title">频发 → 偶发</div>
+        <div class="vis-row">
+          <div class="vis-cell"><span class="vis-label">频发</span><div class="cal"><span class="c red"></span><span class="c red"></span><span class="c red"></span><span class="c"></span><span class="c red"></span><span class="c red"></span><span class="c"></span><span class="c red"></span><span class="c red"></span><span class="c"></span><span class="c red"></span><span class="c"></span><span class="c red"></span><span class="c red"></span><span class="c"></span><span class="c red"></span><span class="c red"></span><span class="c"></span><span class="c red"></span><span class="c"></span><span class="c red"></span><span class="c"></span><span class="c red"></span><span class="c"></span><span class="c red"></span><span class="c"></span><span class="c"></span><span class="c"></span></div></div>
+          <span class="arrow">→</span>
+          <div class="vis-cell"><span class="vis-label">偶发</span><div class="cal"><span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span><span class="c red"></span><span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span><span class="c red"></span><span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span><span class="c red"></span><span class="c"></span><span class="c"></span><span class="c"></span><span class="c"></span></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="layer">
+      <div class="problem"><b>② 故障点多</b><small>每类仍有多个根因</small></div>
+      <div class="route">
+        <div class="route-title">简化标准化</div>
+        <div class="chips"><span class="chip">golden path</span><span class="chip">减少变体</span><span class="chip">blast radius</span><span class="chip">配置收敛</span></div>
+      </div>
+      <div class="effect">
+        <div class="effect-title">点多 → 聚焦</div>
+        <div class="vis-row">
+          <div class="vis-cell"><span class="vis-label">点多</span><div class="dots"><span class="d red"></span><span class="d"></span><span class="d red"></span><span class="d red"></span><span class="d"></span><span class="d red"></span><span class="d"></span><span class="d red"></span><span class="d red"></span><span class="d"></span><span class="d red"></span><span class="d"></span><span class="d red"></span><span class="d red"></span><span class="d"></span><span class="d"></span><span class="d red"></span><span class="d"></span><span class="d red"></span><span class="d"></span><span class="d red"></span><span class="d red"></span><span class="d"></span><span class="d"></span><span class="d red"></span><span class="d"></span><span class="d"></span><span class="d red"></span><span class="d"></span><span class="d"></span></div></div>
+          <span class="arrow">→</span>
+          <div class="vis-cell"><span class="vis-label">聚焦</span><div class="dots"><span class="d"></span><span class="d"></span><span class="d"></span><span class="d"></span><span class="d"></span><span class="d red"></span><span class="d"></span><span class="d"></span><span class="d"></span><span class="d"></span><span class="d"></span><span class="d"></span><span class="d red"></span><span class="d"></span><span class="d"></span><span class="d"></span><span class="d"></span><span class="d"></span><span class="d"></span><span class="d red"></span><span class="d"></span><span class="d"></span><span class="d"></span><span class="d"></span><span class="d"></span><span class="d"></span><span class="d red"></span><span class="d"></span><span class="d"></span><span class="d"></span></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="layer">
+      <div class="problem"><b>③ 发现慢 &amp; MTTR 长</b><small>用户先发现、恢复慢</small></div>
+      <div class="route">
+        <div class="route-title">可观测 + 归因</div>
+        <div class="chips"><span class="chip">SLI/探针</span><span class="chip">失败签名</span><span class="chip">taxonomy</span><span class="chip">runbook</span><span class="chip">自动缓解</span></div>
+      </div>
+      <div class="effect">
+        <div class="effect-title">发现慢 / MTTR 长 → 提前发现 / MTTR 短</div>
+        <div class="vis-row">
+          <div class="vis-cell"><span class="vis-label">发现慢 / MTTR 长</span><div class="tl"><span style="width:65%;background:#E45756"></span><span style="width:35%;background:#F79646"></span><span style="width:0%;background:#D9D9D9"></span></div></div>
+          <span class="arrow">→</span>
+          <div class="vis-cell"><span class="vis-label">提前发现 / MTTR 短</span><div class="tl"><span style="width:20%;background:#E45756"></span><span style="width:25%;background:#F79646"></span><span style="width:55%;background:#D9D9D9"></span></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">右侧图示：日历 = 问题频率，点阵 = 问题分布，时间条：红 = 发现耗时、橙 = 恢复耗时。</div>
+  </section>
+
+  <footer>
+    <div><strong>口径</strong>：193 条根因聚合（不含业务侧 22），剔除非故障/未定位 11 后平台 182。</div>
+    <div><strong>说明</strong>：发现 = 半 / 否；MTTR = 长 / 中 / 短（当前能力评估，非实测）。</div>
+  </footer>
+</div>
+</body>
+</html>
